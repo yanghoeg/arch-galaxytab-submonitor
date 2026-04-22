@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────
+# Sunshine secrets — NEVER commit
+# ─────────────────────────────────────────────────────────────
+sunshine_state.json
+sunshine/state/
+sunshine/credentials/
+credentials/
+*.pem
+*.key
+*.p12
+apps.json.local
+apps.json
+
+# ─────────────────────────────────────────────────────────────
+# EDID — actual panel dumps (may carry proprietary vendor IDs / strings)
+# Only *synthetic* / CVT-RB2 generated .bin should be committed,
+# and even then only under edid/generated/.
+# ─────────────────────────────────────────────────────────────
+edid/*_dumped.bin
+edid/*_extracted.bin
+edid/panel_*.bin
+edid/raw/
+**/*_from_hw.bin
+
+# ─────────────────────────────────────────────────────────────
+# Local overrides / personal config
+# ─────────────────────────────────────────────────────────────
+*.local
+*.local.*
+config.local.*
+secrets.*
+.env
+.env.*
+
+# ─────────────────────────────────────────────────────────────
+# Backup / editor droppings
+# ─────────────────────────────────────────────────────────────
+*.bak
+*.bak-*
+*.swp
+*.swo
+*~
+.#*
+\#*\#
+
+# ─────────────────────────────────────────────────────────────
+# OS
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────────────────────────
+# IDE / editors
+# ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+
+# ─────────────────────────────────────────────────────────────
+# Claude Code / AI assistant session data
+# ─────────────────────────────────────────────────────────────
+.claude/
+.aider*
+.cursor/
+
+# ─────────────────────────────────────────────────────────────
+# Python (EDID generator 예정)
+# ─────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ─────────────────────────────────────────────────────────────
+# Logs / test artifacts
+# ─────────────────────────────────────────────────────────────
+*.log
+journal-*.txt
+verify-output-*.txt
+bench-*.csv
