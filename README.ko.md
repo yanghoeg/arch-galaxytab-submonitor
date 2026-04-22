@@ -51,18 +51,28 @@ Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수
 
 ---
 
-## 저장소 구조 (예정)
+## 저장소 구조
 
 ```
-edid/        2960×1848 @ 120 Hz EDID 생성 스크립트 (CVT-RB2)
-kernel/      kernel cmdline / mkinitcpio 스니펫
-sunshine/    systemd 유닛 + 설정 템플릿 (시크릿 제외)
-udev/        uinput 접근 규칙
-scripts/     install / verify / uninstall (dry-run 기본)
-docs/        latency tuning, security model, troubleshooting
+install.sh            진입점 — 기본 dry-run, --apply 로 실행
+lib/
+  util.sh             로깅 + dry-run 실행기 (run_cmd, run_sudo)
+  ports.sh            자동 감지 + 포트 디스패처 함수
+  core.sh             설치 단계 (EDID → 커널 → initramfs → Sunshine → udev)
+adapters/
+  bootloader/         systemd_boot.sh · grub.sh
+  initramfs/          mkinitcpio.sh · dracut.sh
+  pkg/                yay.sh · paru.sh · pacman.sh
+edid/                 2960×1848@120 EDID 생성 스크립트 (CVT-RB2) — 작업 중
+udev/                 uinput 접근 규칙 (sunshine-uinput 그룹)
+scripts/              verify.sh · uninstall.sh — 작업 중
+docs/                 latency tuning, security model, troubleshooting
 ```
 
-현재 스켈레톤 단계. 아직 실사용 가능한 install 경로 없음.
+install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다.
+`--bootloader`, `--initramfs`, `--pkg` 플래그로 재정의 가능. `--help` 참조.
+
+현재 미완성: `edid/generate.py` (다음 단계) 및 스트리밍·터치 절반.
 
 ---
 

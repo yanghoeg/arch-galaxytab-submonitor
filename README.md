@@ -51,18 +51,28 @@ Born from the fact that there is no first-class native-resolution secondary-moni
 
 ---
 
-## Repository layout (planned)
+## Repository layout
 
 ```
-edid/        EDID generator for 2960×1848 @ 120 Hz (CVT-RB2)
-kernel/      Kernel cmdline / mkinitcpio snippets
-sunshine/    systemd unit + config template (secrets excluded)
-udev/        uinput access rules
-scripts/     install / verify / uninstall (dry-run by default)
-docs/        Latency tuning, security model, troubleshooting
+install.sh            Entry point — dry-run by default, --apply to apply
+lib/
+  util.sh             Logging + dry-run aware executors (run_cmd, run_sudo)
+  ports.sh            Auto-detection + port dispatcher functions
+  core.sh             Install steps (EDID → kernel → initramfs → Sunshine → udev)
+adapters/
+  bootloader/         systemd_boot.sh · grub.sh
+  initramfs/          mkinitcpio.sh · dracut.sh
+  pkg/                yay.sh · paru.sh · pacman.sh
+edid/                 2960×1848@120 EDID generator (CVT-RB2) — in progress
+udev/                 uinput access rules  (sunshine-uinput group)
+scripts/              verify.sh · uninstall.sh — in progress
+docs/                 Latency tuning, security model, troubleshooting
 ```
 
-Currently at skeleton stage — there is no working install path yet.
+The installer auto-detects your bootloader, initramfs tool, and AUR helper.
+Override with `--bootloader`, `--initramfs`, `--pkg` flags; see `--help` for all options.
+
+Currently missing: `edid/generate.py` (next step) and the streaming / touch half of the stack.
 
 ---
 

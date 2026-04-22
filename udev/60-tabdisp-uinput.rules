@@ -1,0 +1,3 @@
+# Allow members of the sunshine-uinput group to create virtual input devices.
+# Scoped to a dedicated group rather than uaccess to limit the blast radius.
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="sunshine-uinput", MODE="0660"
