@@ -14,6 +14,7 @@ source "$SCRIPT_DIR/lib/util.sh"
 EDID_CONNECTOR="HDMI-A-1"
 SUNSHINE_UNIT="app-dev.lizardbyte.app.Sunshine.service"
 NO_START=false
+STOP=false
 
 usage() {
   cat <<USAGE
@@ -25,6 +26,7 @@ tablet needs is in place. Changes nothing else.
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
+  --stop               Stop Sunshine and exit
   --no-start           Only report; do not start Sunshine
   --connector <name>   DRM connector name  (default: HDMI-A-1)
   -h, --help           Show this help
@@ -33,6 +35,7 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --stop)      STOP=true ;;
     --no-start)  NO_START=true ;;
     --connector) validate_connector_name "${2:-}"; EDID_CONNECTOR="$2"; shift ;;
     -h|--help)   usage; exit 0 ;;
@@ -47,6 +50,18 @@ bad()  { printf "  %-16s %s\n" "$1" "$2"; N_BAD=$((N_BAD + 1)); }
 
 log_header "arch-galaxytab-submonitor session"
 echo
+
+# Stopping is the other half of "I do not always need this running". Nothing
+# else here has to be undone -- the virtual output is a boot-time thing.
+if [[ "$STOP" == "true" ]]; then
+  before=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
+  systemctl --user stop "$SUNSHINE_UNIT" 2>/dev/null
+  row "sunshine" "$([[ "$before" == "active" ]] && echo "stopped" || echo "was already $before")"
+  row "virtual output" "left in place — it comes up at boot, not from here"
+  echo
+  log_header "Stopped"
+  exit 0
+fi
 
 # ── The virtual output ────────────────────────────────────────────────────────
 CONNECTOR_DIR=$(echo /sys/class/drm/card*-"${EDID_CONNECTOR}" | cut -d' ' -f1)

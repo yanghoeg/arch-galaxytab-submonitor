@@ -258,7 +258,19 @@ Moonlight 설정에서 **HEVC** 를 고르고 비트레이트를 올린다. 기�
 ══ Ready — open Moonlight on the tablet ══
 ```
 
-서비스가 안 떠 있으면 띄우고, 실제로 연결을 막는 것들을 점검한다 — scale 1에 묶인 출력, 엉뚱한 화면을 가리키는 캡처 대상, 소프트웨어 인코더 폴백, Sunshine 규칙이 없는 방화벽, 올라오지 않은 테더링, mDNS 광고 여부. 하나라도 어긋나면 exit 1. `--no-start` 는 아무것도 건드리지 않고 보고만 한다.
+서비스가 안 떠 있으면 띄우고, 실제로 연결을 막는 것들을 점검한다 — scale 1에 묶인 출력, 엉뚱한 화면을 가리키는 캡처 대상, 소프트웨어 인코더 폴백, Sunshine 규칙이 없는 방화벽, 올라오지 않은 테더링, mDNS 광고 여부. 하나라도 어긋나면 exit 1. `--no-start` 는 아무것도 건드리지 않고 보고만 하며, `--stop` 은 Sunshine을 내린다.
+
+Sunshine이 상주하는 게 싫다면 — 탭을 안 쓸 때 트레이 아이콘이 떠 있는 게 거슬린다면 — 자동시작을 한 번 끄고 스크립트로 굴리면 된다.
+
+```bash
+systemctl --user disable app-dev.lizardbyte.app.Sunshine.service
+./scripts/session.sh          # 두 번째 화면이 필요할 때
+./scripts/session.sh --stop   # 다 썼을 때
+```
+
+`disable` 은 자동시작 심링크만 지우며 필요할 때 수동 기동은 그대로 된다. 애초에 enable 단계를 건너뛰려면 `--no-enable` 로 설치하고, 이후 `--apply` 를 돌릴 때도 계속 붙여야 설치기가 자동시작을 조용히 되살리지 않는다.
+
+나머지는 내릴 것이 없다. 가상 출력은 부팅 시점의 산물이고 놀고 있어도 비용이 없다 — 끌 가치가 있는 건 Sunshine뿐이다.
 
 이 용도로 `install.sh` 를 쓰지 말 것. 부트 엔트리를 편집하고 initramfs를 재빌드할 수 있는 설치기이지 런처가 아니다.
 

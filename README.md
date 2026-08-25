@@ -311,7 +311,25 @@ actually stop a connection: an output stuck at scale 1, a capture target
 pointing at the wrong screen, a software encoder fallback, a firewall with no
 rule for Sunshine, tethering that is not up, and whether mDNS is advertising.
 Non-zero exit if any of those are wrong. `--no-start` reports without touching
-anything.
+anything, and `--stop` shuts Sunshine down again.
+
+If you would rather Sunshine were not resident — no tray icon sitting there when
+you are not using the tablet — turn autostart off once and drive it from the
+script:
+
+```bash
+systemctl --user disable app-dev.lizardbyte.app.Sunshine.service
+./scripts/session.sh          # when you want the second screen
+./scripts/session.sh --stop   # when you are done
+```
+
+`disable` only removes the autostart symlink; the service still starts on
+demand. Install with `--no-enable` to skip the enable step in the first place,
+and keep using it on later `--apply` runs so the installer does not quietly turn
+autostart back on.
+
+Nothing else needs stopping. The virtual output is a boot-time thing and costs
+nothing while idle — only Sunshine is worth turning off.
 
 Do not use `install.sh` for this. It edits the bootloader entry and can rebuild
 the initramfs; it is an installer, not a launcher.
