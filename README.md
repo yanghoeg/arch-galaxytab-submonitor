@@ -10,12 +10,11 @@ Born from the fact that there is no first-class native-resolution secondary-moni
 
 > **Status: alpha / personal.** Target-validated only on a Galaxy Book Ultra 3 (Intel + NVIDIA PRIME Optimus) host and a Galaxy Tab S9 Ultra client. Other combinations are unverified.
 >
-> **Working, measured on hardware:** the 2960×1848 virtual output, KDE extending onto it, `hevc_vaapi` capture of that output, and Moonlight streaming over USB-C tethering.
+> **Working, measured on hardware:** the 2960×1848 virtual output coming up from boot with no debugfs help, KDE extending onto it, `hevc_vaapi` capture of that output, Moonlight streaming over USB-C tethering, and mDNS discovery through Avahi.
 >
 > **Not verified yet:**
 > - **Pen / touch return input.** The `uinput` path is wired and `/dev/uinput` is writable, but no input has actually been round-tripped — Sunshine's virtual input device has never appeared in `/proc/bus/input/devices`.
 > - **Wi-Fi 6E transport.** Only USB-C tethering has been exercised; the firewall rules scope Sunshine to that interface alone.
-> - **The boot-time path.** `install.sh --apply` writes the kernel parameters and puts the EDID in the initramfs, but this has not been through a reboot — the running virtual output was brought up live via debugfs.
 
 ---
 
@@ -112,30 +111,167 @@ Override with `--bootloader`, `--initramfs`, `--pkg` flags; see `--help` for all
 
 ## Usage
 
-```bash
-./install.sh                            # dry-run: prints every change it would make
-./install.sh --apply                    # apply
-./install.sh --apply --profile tabs9_100hz
+### 1. Install
 
-# after rebooting
-./scripts/verify.sh                     # read-only check, non-zero exit on failure
-./scripts/uninstall.sh --apply          # reverse everything
+The installer is dry-run by default and prints every change it would make, so
+run it once bare and read the output before committing to anything.
+
+```bash
+./install.sh                              # dry-run
+./install.sh --apply                      # apply
+./install.sh --apply --profile tabs9_100hz  # a different refresh rate
 ```
 
-Two things are not automatic once the virtual output exists:
+It auto-detects your bootloader, initramfs tool and AUR helper; override any of
+them with `--bootloader`, `--initramfs`, `--pkg`. See `--help` for everything.
+
+The bootloader entry and initramfs config are backed up with a timestamp before
+they are edited. Re-running `--apply` is a no-op for anything already in place.
+
+### 2. Reboot, then verify
+
+The kernel parameters only take effect on the next boot, and the EDID has to be
+readable that early — which is why it goes into the initramfs.
 
 ```bash
-# 1. point Sunshine at it — otherwise it keeps capturing the built-in panel.
-#    Find the index (order of the lines, from 0):
-journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monitor'
-./install.sh --apply --sunshine-output 1
+./scripts/verify.sh
+```
 
-# 2. match the scale of your built-in panel — a new output comes up at scale 1,
-#    which on a 14.6" 2960x1848 panel renders everything at about half size.
+Read-only, exits non-zero on failure. A healthy run reports the blob and its
+CTA-861 blocks, both kernel parameters active, the blob present in every
+initramfs image, the connector `connected` at your profile's resolution, and
+Sunshine's capabilities, service and capture target.
+
+### 3. Point Sunshine at the virtual output
+
+Without this Sunshine captures whatever display it considers default — usually
+the built-in panel, so you end up mirroring instead of extending. The index is
+the order these lines appear in, starting at 0:
+
+```bash
+journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monitor'
+```
+
+```
+[wayland] Found monitor: Built-in Screen                         <- 0
+[wayland] Found monitor: The Linux Foundation HDMI-A-1-Virtual Sub  <- 1
+```
+
+```bash
+./install.sh --apply --sunshine-output 1
+```
+
+### 4. Match the display scale
+
+A new output comes up at scale 1. On a 14.6" 2960×1848 panel that renders
+everything at roughly half the size it has on a laptop screen — legible in a
+screenshot, not in use.
+
+```bash
 kscreen-doctor output.HDMI-A-1.scale.2
 ```
 
-Still open: reboot verification of the boot path, touch/pen return, and the Wi-Fi 6E transport. Streaming and pairing work.
+Scale 2 gives a logical 1480×924, which is close enough to a typical 1440×900
+laptop desktop that UI elements end up the same physical size on both.
+
+### 5. Create the Sunshine web UI login
+
+First run only. Open <https://localhost:47990>, accept the self-signed
+certificate, and set a username and password. Those credentials and your pairing
+keys live in `~/.config/sunshine/`, which `.gitignore` blocks and
+`scripts/uninstall.sh` deliberately never touches.
+
+### 6. Connect the tablet and open the firewall
+
+USB-C tethering is the tested transport. Enable it on the tablet, then confirm
+the host picked up an address:
+
+```bash
+ip -br addr show label 'enp*u*'
+```
+
+Sunshine binds `0.0.0.0`, so scope it to that interface rather than exposing it
+to every network. Ports: TCP 47984 (pairing), 47989 (control), 48010 (RTSP) and
+UDP 47998–48000, 48002 (video, audio, mic). Leave 47990 closed — the web UI
+belongs on localhost.
+
+```
+define TAB_IF = "enp0s13f0u*"
+iifname $TAB_IF tcp dport { 47984, 47989, 48010 } accept
+iifname $TAB_IF udp dport { 47998-48000, 48002 } accept
+```
+
+Use `iifname` with a wildcard, never `iif`. See the security notice below for
+why that distinction can cost you the whole firewall.
+
+### 7. Optional: mDNS discovery, so the address stops mattering
+
+The tablet is the DHCP server over USB tethering, so the host's address changes
+whenever you re-tether — and Moonlight remembers addresses, not names. Letting
+Sunshine advertise itself removes the problem entirely.
+
+Sunshine publishes `_nvstream._tcp` through `libavahi-client`, so it needs
+`avahi-daemon` running. Only one process can bind UDP 5353, and on a systemd
+system `systemd-resolved` usually holds it, so hand the port over:
+
+```bash
+sudo pacman -S avahi nss-mdns
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\nMulticastDNS=no\n' \
+  | sudo tee /etc/systemd/resolved.conf.d/10-no-mdns.conf
+sudo systemctl restart systemd-resolved
+sudo systemctl enable --now avahi-daemon
+```
+
+`nss-mdns` keeps host-side `.local` lookups working now that resolved is out of
+the picture. Add it to `/etc/nsswitch.conf` before the `dns` entry:
+
+```
+hosts: files mdns_minimal [NOTFOUND=return] myhostname dns
+```
+
+Then let mDNS through the firewall. It is multicast to `224.0.0.251` / `ff02::fb`,
+so a rule that only permits private unicast ranges will not cover the replies —
+the outbound port has to be allowed explicitly:
+
+```
+iifname $TAB_IF udp dport 5353 accept          # in the input chain
+... 5353 ...                                   # add to your outbound UDP ports
+```
+
+Restart Sunshine, then confirm it is actually advertising:
+
+```bash
+systemctl --user restart app-dev.lizardbyte.app.Sunshine.service
+avahi-browse -atr | grep nvstream
+```
+
+You should see your hostname against `_nvstream._tcp` with the tethering address
+and port 47989. Moonlight will then find the host by itself.
+
+### 8. Pair Moonlight
+
+Install [Moonlight](https://moonlight-stream.org/) on the tablet and open it.
+With step 7 done the host appears on its own; without it, add the host's address
+manually. Tap it, and enter the PIN it shows in the Sunshine web UI. Pairing is
+trust-on-first-use over a 4-digit PIN, so do it on a link you trust — over USB
+tethering that is just the cable.
+
+In Moonlight's settings, pick **HEVC** and raise the bitrate. The default is far
+too low for 2960×1848; USB tethering has the headroom for 50–100 Mbps. Do not
+pick AV1 unless your host GPU can encode it — Intel iGPUs through Raptor Lake
+decode AV1 but cannot encode it, and Sunshine will fall back to software.
+
+### Uninstall
+
+```bash
+./scripts/uninstall.sh                    # dry-run
+./scripts/uninstall.sh --apply            # reverse everything
+./scripts/uninstall.sh --apply --purge    # and remove the Sunshine package
+```
+
+Reverses the kernel parameters, initramfs entry, EDID blob, capabilities, group
+and udev rule. Your Sunshine configuration and pairing keys are left alone.
 
 ---
 

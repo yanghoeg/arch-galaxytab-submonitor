@@ -10,12 +10,11 @@ Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수
 
 > **Status: alpha / personal.** Galaxy Book Ultra 3 (Intel + NVIDIA PRIME Optimus) 호스트와 Galaxy Tab S9 Ultra 클라이언트 조합에서만 검증. 다른 하드웨어 조합은 미검증.
 >
-> **실기에서 확인된 것:** 2960×1848 가상 출력, KDE 확장 배치, 해당 출력의 `hevc_vaapi` 캡처, USB-C 테더링 경유 Moonlight 스트리밍.
+> **실기에서 확인된 것:** debugfs 도움 없이 부팅만으로 올라오는 2960×1848 가상 출력, KDE 확장 배치, 해당 출력의 `hevc_vaapi` 캡처, USB-C 테더링 경유 Moonlight 스트리밍, Avahi 경유 mDNS 자동탐색.
 >
 > **아직 미검증:**
 > - **펜 / 터치 리턴 인풋.** `uinput` 경로는 연결돼 있고 `/dev/uinput` 쓰기도 열려 있지만, 실제 입력을 왕복시켜 본 적이 없다 — Sunshine 가상 입력 장치가 `/proc/bus/input/devices` 에 나타난 적이 없다.
 > - **Wi-Fi 6E 전송.** USB-C 테더링만 검증했고, 방화벽 규칙도 그 인터페이스에만 열려 있다.
-> - **부팅 경로.** `install.sh --apply` 가 커널 파라미터를 쓰고 EDID를 initramfs에 넣지만 재부팅을 거치지 않았다 — 현재 떠 있는 가상 출력은 debugfs로 라이브 적용한 것이다.
 
 ---
 
@@ -112,30 +111,131 @@ install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다
 
 ## 사용법
 
-```bash
-./install.sh                            # dry-run: 바꿀 내용을 전부 출력만
-./install.sh --apply                    # 실제 적용
-./install.sh --apply --profile tabs9_100hz
+### 1. 설치
 
-# 재부팅 후
-./scripts/verify.sh                     # 읽기 전용 점검. 실패 시 exit 1
-./scripts/uninstall.sh --apply          # 전부 되돌리기
+설치기는 기본이 dry-run이라 바꿀 내용을 전부 출력만 한다. 한 번 그냥 돌려서 읽어보고 적용하는 것을 권한다.
+
+```bash
+./install.sh                              # dry-run
+./install.sh --apply                      # 적용
+./install.sh --apply --profile tabs9_100hz  # 다른 주사율
 ```
 
-가상 출력이 생긴 뒤 자동으로 되지 않는 것이 둘 있다:
+부트로더·initramfs 도구·AUR 헬퍼는 자동 감지하며 `--bootloader`, `--initramfs`, `--pkg` 로 재정의한다. 전체 옵션은 `--help` 참조.
+
+부트 엔트리와 initramfs 설정은 편집 직전 타임스탬프 백업을 뜬다. 이미 적용된 항목에 `--apply` 를 다시 돌리면 no-op이다.
+
+### 2. 재부팅 후 검증
+
+커널 파라미터는 다음 부팅부터 적용되고, EDID는 그 이른 시점에 읽혀야 한다 — initramfs에 넣는 이유가 이것이다.
 
 ```bash
-# 1. Sunshine이 그 출력을 잡게 한다 — 안 하면 계속 내장 패널을 캡처한다.
-#    인덱스는 아래 줄들의 순서(0부터):
-journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monitor'
-./install.sh --apply --sunshine-output 1
+./scripts/verify.sh
+```
 
-# 2. 내장 패널과 배율을 맞춘다 — 새 출력은 scale 1로 올라오는데,
-#    14.6" 2960x1848 패널에서는 모든 것이 절반 크기로 그려진다.
+읽기 전용이며 실패 시 exit 1. 정상이면 블롭과 CTA-861 블록, 커널 파라미터 두 개 활성, 모든 initramfs 이미지에 블롭 포함, 커넥터가 프로파일 해상도로 `connected`, Sunshine의 capability·서비스·캡처 대상을 보고한다.
+
+### 3. Sunshine 이 가상 출력을 잡게 하기
+
+이걸 안 하면 Sunshine이 기본 디스플레이(보통 내장 패널)를 캡처해서 확장이 아니라 복제가 된다. 인덱스는 아래 줄들이 나오는 순서이며 0부터 센다.
+
+```bash
+journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monitor'
+```
+
+```
+[wayland] Found monitor: Built-in Screen                         <- 0
+[wayland] Found monitor: The Linux Foundation HDMI-A-1-Virtual Sub  <- 1
+```
+
+```bash
+./install.sh --apply --sunshine-output 1
+```
+
+### 4. 배율 맞추기
+
+새 출력은 scale 1로 올라온다. 14.6" 2960×1848 패널에서는 모든 것이 노트북 화면 대비 절반 크기로 그려진다 — 스크린샷으로는 읽히지만 실사용은 불가능하다.
+
+```bash
 kscreen-doctor output.HDMI-A-1.scale.2
 ```
 
-남은 것: 부팅 경로 재부팅 검증, 터치/펜 리턴, Wi-Fi 6E 전송. 스트리밍과 페어링은 동작한다.
+scale 2면 논리 해상도가 1480×924가 되어, 흔한 1440×900 노트북 데스크톱과 충분히 가까워 UI 요소가 양쪽에서 같은 물리 크기로 보인다.
+
+### 5. Sunshine 웹 UI 계정 생성
+
+최초 실행 시 한 번만. <https://localhost:47990> 을 열고 자체서명 인증서 경고를 넘긴 뒤 사용자명·비밀번호를 만든다. 이 자격증명과 페어링 키는 `~/.config/sunshine/` 에 저장되며, `.gitignore` 가 차단하고 `scripts/uninstall.sh` 도 의도적으로 건드리지 않는다.
+
+### 6. 탭 연결과 방화벽
+
+검증된 전송 경로는 USB-C 테더링이다. 탭에서 테더링을 켠 뒤 호스트가 주소를 받았는지 확인한다.
+
+```bash
+ip -br addr show label 'enp*u*'
+```
+
+Sunshine은 `0.0.0.0` 에 바인딩하므로 모든 네트워크에 노출하지 말고 해당 인터페이스로 한정한다. 포트는 TCP 47984(페어링)·47989(제어)·48010(RTSP), UDP 47998–48000·48002(비디오·오디오·마이크). 47990은 닫아둔다 — 웹 UI는 localhost 전용이다.
+
+```
+define TAB_IF = "enp0s13f0u*"
+iifname $TAB_IF tcp dport { 47984, 47989, 48010 } accept
+iifname $TAB_IF udp dport { 47998-48000, 48002 } accept
+```
+
+`iif` 가 아니라 **`iifname` + 와일드카드**를 쓸 것. 이 차이로 방화벽을 통째로 잃을 수 있다 — 아래 보안 주의사항 참조.
+
+### 7. 선택: mDNS 자동탐색으로 주소 문제 없애기
+
+USB 테더링에서는 탭이 DHCP 서버라 재연결마다 호스트 주소가 바뀌는데, Moonlight은 이름이 아니라 주소를 저장한다. Sunshine이 스스로를 광고하게 하면 이 문제가 사라진다.
+
+Sunshine은 `libavahi-client` 로 `_nvstream._tcp` 를 광고하므로 `avahi-daemon` 이 필요하다. UDP 5353은 한 프로세스만 점유할 수 있고 systemd 시스템에서는 보통 `systemd-resolved` 가 잡고 있으니 넘겨준다.
+
+```bash
+sudo pacman -S avahi nss-mdns
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\nMulticastDNS=no\n' \
+  | sudo tee /etc/systemd/resolved.conf.d/10-no-mdns.conf
+sudo systemctl restart systemd-resolved
+sudo systemctl enable --now avahi-daemon
+```
+
+`nss-mdns` 는 resolved가 빠진 뒤에도 호스트 쪽 `.local` 해석을 유지해 준다. `/etc/nsswitch.conf` 의 `dns` 앞에 넣는다.
+
+```
+hosts: files mdns_minimal [NOTFOUND=return] myhostname dns
+```
+
+그다음 방화벽에 mDNS를 열어준다. `224.0.0.251` / `ff02::fb` 로 가는 멀티캐스트라 사설 유니캐스트 대역만 허용하는 규칙으로는 응답이 나가지 못한다 — 아웃바운드 포트를 명시적으로 허용해야 한다.
+
+```
+iifname $TAB_IF udp dport 5353 accept          # input 체인
+... 5353 ...                                   # 아웃바운드 UDP 포트 집합에 추가
+```
+
+Sunshine을 재시작하고 실제로 광고되는지 확인한다.
+
+```bash
+systemctl --user restart app-dev.lizardbyte.app.Sunshine.service
+avahi-browse -atr | grep nvstream
+```
+
+호스트명이 `_nvstream._tcp` 와 함께 테더링 주소·포트 47989로 보이면 성공이다. 이후 Moonlight이 알아서 호스트를 찾는다.
+
+### 8. Moonlight 페어링
+
+탭에 [Moonlight](https://moonlight-stream.org/) 을 설치하고 실행한다. 7번을 했다면 호스트가 저절로 뜨고, 안 했다면 호스트 주소를 수동으로 추가한다. 탭한 뒤 화면에 뜬 PIN을 Sunshine 웹 UI에 입력한다. 페어링은 4자리 PIN 기반 TOFU이므로 신뢰할 수 있는 링크에서 할 것 — USB 테더링이면 그냥 케이블이다.
+
+Moonlight 설정에서 **HEVC** 를 고르고 비트레이트를 올린다. 기본값은 2960×1848에 턱없이 낮고, USB 테더링은 50~100 Mbps를 감당한다. 호스트 GPU가 AV1 인코드를 못 하면 AV1은 고르지 말 것 — Raptor Lake까지의 Intel iGPU는 AV1을 디코드만 하고 인코드는 못 해서 Sunshine이 소프트웨어로 폴백한다.
+
+### 제거
+
+```bash
+./scripts/uninstall.sh                    # dry-run
+./scripts/uninstall.sh --apply            # 전부 되돌리기
+./scripts/uninstall.sh --apply --purge    # Sunshine 패키지까지 제거
+```
+
+커널 파라미터·initramfs 항목·EDID 블롭·capability·그룹·udev 규칙을 되돌린다. Sunshine 설정과 페어링 키는 건드리지 않는다.
 
 ---
 
