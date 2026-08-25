@@ -20,6 +20,9 @@ edid/*_dumped.bin
 edid/*_extracted.bin
 edid/panel_*.bin
 edid/raw/
+# Generated blobs are reproducible byte-for-byte from generate.py, so they are
+# build output rather than source.
+edid/generated/
 **/*_from_hw.bin
 
 # ─────────────────────────────────────────────────────────────

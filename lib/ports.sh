@@ -20,7 +20,7 @@ port_detect_initramfs() {
 }
 
 port_detect_pkg_manager() {
-  for h in yay paru aura; do
+  for h in yay paru; do
     command -v "$h" &>/dev/null && { echo "$h"; return; }
   done
   echo "pacman"
@@ -38,3 +38,8 @@ port_initramfs_rebuild()      { "_${INITRAMFS}_initramfs_rebuild"; }
 
 port_pkg_install()            { "_${PKG_MANAGER}_pkg_install"           "$@"; }
 port_pkg_is_installed()       { "_${PKG_MANAGER}_pkg_is_installed"      "$1"; }
+
+# Removal side, used by scripts/uninstall.sh.
+port_bootloader_remove_param() { "_${BOOTLOADER}_bootloader_remove_param" "$@"; }
+port_initramfs_remove_file()   { "_${INITRAMFS}_initramfs_remove_file"    "$@"; }
+port_pkg_remove()              { "_${PKG_MANAGER}_pkg_remove"             "$@"; }

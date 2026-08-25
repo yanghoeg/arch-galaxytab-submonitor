@@ -5,7 +5,7 @@ _dracut_initramfs_add_file() {
   local src="$1"
   local conf="/etc/dracut.conf.d/tabdisp.conf"
 
-  if [[ -f "$conf" ]] && grep -qF "$src" "$conf" 2>/dev/null; then
+  if file_exists "$conf" && file_has "$conf" "$src"; then
     log "Already in dracut conf: $src"
     return 0
   fi
@@ -17,4 +17,17 @@ _dracut_initramfs_add_file() {
 
 _dracut_initramfs_rebuild() {
   run_sudo dracut --force
+}
+
+_dracut_initramfs_remove_file() {
+  # install added a dedicated drop-in, so removing the whole file is exact.
+  local conf="/etc/dracut.conf.d/tabdisp.conf"
+
+  if ! file_exists "$conf"; then
+    log "Not present: $conf"
+    return 0
+  fi
+
+  log "Removing dracut drop-in: $conf"
+  run_sudo rm -f "$conf"
 }

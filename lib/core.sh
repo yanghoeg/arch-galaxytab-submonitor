@@ -7,19 +7,21 @@
 _core_edid() {
   log_step "EDID: generate & install"
 
-  local src="${SCRIPT_DIR}/edid/${EDID_PROFILE}.bin"
+  # .gitignore's policy: synthetic blobs live under edid/generated/.
+  local src="${SCRIPT_DIR}/edid/generated/${EDID_PROFILE}.bin"
   local dst="/usr/lib/firmware/edid/${EDID_PROFILE}.bin"
 
   if [[ ! -f "$src" ]]; then
     if [[ ! -f "${SCRIPT_DIR}/edid/generate.py" ]]; then
       if [[ "$DRY_RUN" == "true" ]]; then
-        warn "edid/generate.py not yet implemented — would generate ${src}"
+        warn "edid/generate.py missing — would generate ${src}"
       else
         die "edid/generate.py not found. Run edid/generate.py first or place a pre-built .bin at: $src"
       fi
     else
-      log "Generating EDID binary (CVT-RB2 2960×1848@120Hz)..."
-      run_cmd python3 "${SCRIPT_DIR}/edid/generate.py" --output "$src"
+      log "Generating EDID binary (CVT-RB2, profile ${EDID_PROFILE})..."
+      run_cmd mkdir -p "${SCRIPT_DIR}/edid/generated"
+      run_cmd python3 "${SCRIPT_DIR}/edid/generate.py" --profile "$EDID_PROFILE" --output "$src"
     fi
   else
     log "EDID binary exists: $src"
@@ -42,27 +44,59 @@ _core_initramfs() {
 }
 
 _core_sunshine() {
-  log_step "Sunshine: install"
-  if port_pkg_is_installed sunshine; then
+  log_step "Sunshine: install (${SUNSHINE_PKG})"
+  if port_pkg_is_installed "$SUNSHINE_PKG"; then
     log "Already installed — skipping."
   else
-    port_pkg_install sunshine
+    port_pkg_install "$SUNSHINE_PKG"
   fi
 
   log_step "Sunshine: capabilities"
+  # setcap replaces the whole capability set, and the LizardByte packages ship
+  # cap_sys_admin,cap_sys_nice already. Re-apply both so cap_sys_nice survives.
   if [[ "$DRY_RUN" == "true" ]]; then
-    log "[dry-run] sudo setcap cap_sys_admin+p \$(command -v sunshine)"
+    log "[dry-run] sudo setcap cap_sys_admin,cap_sys_nice+p \$(command -v sunshine)"
   else
     local sunshine_bin
     sunshine_bin="$(command -v sunshine 2>/dev/null)" \
       || die "sunshine binary not found after install."
-    sudo setcap cap_sys_admin+p "$sunshine_bin"
+    sudo setcap cap_sys_admin,cap_sys_nice+p "$sunshine_bin"
   fi
 
   log_step "Sunshine: uinput group + systemd user service"
   run_sudo groupadd -f sunshine-uinput
   run_sudo usermod -aG sunshine-uinput "$USER"
-  run_cmd systemctl --user enable --now sunshine
+  run_cmd systemctl --user enable --now "$SUNSHINE_UNIT"
+}
+
+_core_sunshine_output() {
+  log_step "Sunshine: capture target"
+  local conf="${XDG_CONFIG_HOME:-$HOME/.config}/sunshine/sunshine.conf"
+
+  if [[ -z "${SUNSHINE_OUTPUT:-}" ]]; then
+    log "No --sunshine-output given — Sunshine keeps capturing its default"
+    log "display, which is usually the built-in panel rather than the virtual"
+    log "one. Once Sunshine has run at least once, list the candidates with:"
+    log "  journalctl --user -u ${SUNSHINE_UNIT} | grep 'Found monitor'"
+    log "then re-run with --sunshine-output <index>."
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "[dry-run] set 'output_name = ${SUNSHINE_OUTPUT}' in ${conf}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$conf")"
+  backup_file "$conf"
+  if [[ -f "$conf" ]] && grep -qE '^[[:space:]]*output_name[[:space:]]*=' "$conf"; then
+    sed -i "s|^[[:space:]]*output_name[[:space:]]*=.*|output_name = ${SUNSHINE_OUTPUT}|" "$conf"
+    log "Updated output_name in $conf"
+  else
+    printf 'output_name = %s\n' "$SUNSHINE_OUTPUT" >> "$conf"
+    log "Added output_name to $conf"
+  fi
+  run_cmd systemctl --user restart "$SUNSHINE_UNIT"
 }
 
 _core_udev() {
@@ -82,6 +116,7 @@ run_install() {
   _core_kernel_params
   _core_initramfs
   _core_sunshine
+  _core_sunshine_output
   _core_udev
 
   echo ""

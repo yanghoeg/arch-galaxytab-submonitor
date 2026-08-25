@@ -34,11 +34,12 @@ _systemd_boot_bootloader_add_param() {
   entry=$(_systemd_boot_entry_file) \
     || die "No systemd-boot entry found. Check /boot/loader/entries or pass --bootloader."
 
-  if grep -qF "$param" "$entry" 2>/dev/null; then
+  if file_has "$entry" "$param"; then
     log "Already present: $param"
     return 0
   fi
 
+  backup_file "$entry"
   log "Adding to options in: $(basename "$entry")"
   # Use | as delimiter — param contains '/' (e.g. edid/tabs9_120hz.bin)
   run_sudo sed -i "/^options / s|$| ${param}|" "$entry"
@@ -47,5 +48,20 @@ _systemd_boot_bootloader_add_param() {
 _systemd_boot_bootloader_list_params() {
   local entry
   entry=$(_systemd_boot_entry_file) || { warn "No entry file found."; return 1; }
-  grep "^options" "$entry"
+  sudo grep "^options" "$entry"
+}
+
+_systemd_boot_bootloader_remove_param() {
+  local param="$1"
+  local entry
+  entry=$(_systemd_boot_entry_file) \
+    || die "No systemd-boot entry found. Check /boot/loader/entries or pass --bootloader."
+
+  if ! file_has "$entry" "$param"; then
+    log "Not present: $param"
+    return 0
+  fi
+
+  log "Removing from options in: $(basename "$entry")"
+  run_sudo sed -i "/^options / s| *$(sed_escape "$param")||" "$entry"
 }

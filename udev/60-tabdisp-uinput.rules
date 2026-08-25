@@ -1,3 +1,8 @@
-# Allow members of the sunshine-uinput group to create virtual input devices.
-# Scoped to a dedicated group rather than uaccess to limit the blast radius.
+# Put /dev/uinput in a dedicated group instead of the broad "input" group.
+#
+# Note: the Sunshine packages ship /usr/lib/udev/rules.d/60-sunshine.rules with
+# TAG+="uaccess", which hands the logged-in user an ACL on /dev/uinput anyway.
+# This file sorts after it, so the group is applied, but the ACL still wins.
+# Treat the group as tidiness, not as an access boundary -- see
+# docs/troubleshooting.md for how to actually enforce it.
 KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="sunshine-uinput", MODE="0660"

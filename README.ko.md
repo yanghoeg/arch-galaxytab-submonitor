@@ -18,17 +18,40 @@ Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수
  ┌─────────────┐   ┌──────────┐   ┌──────────┐   ┌────────────┐
  │ custom EDID │ → │ virtual  │ → │ Sunshine │ → │  Moonlight │
  │  + kernel   │   │ HDMI out │   │  (host)  │   │   (tab)    │
- │   params    │   │ @ 120Hz  │   │          │   │            │
+ │   params    │   │ @ 60Hz   │   │          │   │            │
  └─────────────┘   └──────────┘   └──────────┘   └────────────┘
                                         ^               │
                                         │  touch / pen  │
                                         └───────────────┘
 ```
 
-1. **가상 디스플레이** — `drm.edid_firmware` + `video=HDMI-A-1:e` 로 i915 드라이버에 2960×1848 @ 120 Hz 합성 커넥터를 활성화.
-2. **캡처 / 인코드** — Sunshine이 PipeWire로 해당 출력만 스크랩, NVENC AV1 또는 HEVC 초저지연 프리셋으로 인코드.
-3. **전송** — Wi-Fi 6E, 또는 USB-C 테더링 + `adb reverse` 조합 (지터 관점에서 권장).
+1. **가상 디스플레이** — `drm.edid_firmware` + `video=HDMI-A-1:e` 로 i915 드라이버에 2960×1848 @ 60 Hz 합성 커넥터를 활성화.
+2. **캡처 / 인코드** — Sunshine이 KMS/Wayland로 해당 출력을 잡아 Intel iGPU의 `hevc_vaapi` 로 인코드. NVENC는 이 구성에서 못 쓴다 — PRIME/Optimus 노트북은 dGPU가 디스플레이를 하나도 물지 않아 Sunshine의 NVENC 경로가 `Couldn't find monitor [0]` 로 실패한다. Raptor Lake-P에는 AV1 인코더도 없어 HEVC가 타깃이다.
+3. **전송** — USB-C 테더링(검증됨) 또는 Wi-Fi 6E(미검증). `adb reverse` 는 TCP만 포워딩하므로 Moonlight의 UDP 비디오·오디오를 나를 수 없다 — 검증된 경로는 순수 USB 테더링이다.
 4. **입력 리턴** — Moonlight의 네이티브 터치 / S펜 이벤트를 `uinput` 가상 장치로 호스트에 주입.
+
+### 왜 120 Hz 가 아니라 60 Hz 인가
+
+EDID detailed timing descriptor 는 픽셀클럭을 16비트 × 10 kHz 단위로 저장하므로 **655.35 MHz** 를 넘을 수 없다. 2960×1848 @ 120 Hz 는 CVT-RB2 블랭킹 기준 713.55 MHz 가 필요하고, 블랭킹을 0으로 둬도 액티브 픽셀만 656.41 MHz 라 여전히 초과한다. 즉 타이밍 조정으로 우회 가능한 문제가 아니라 EDID 포맷 자체가 표현하지 못하는 모드다.
+
+따라서 `edid/generate.py` 는 태블릿 네이티브 해상도에서 세 가지 프로파일을 제공한다.
+
+| 프로파일 | 픽셀클럭 | 비고 |
+|----------|----------|------|
+| `tabs9_60hz` (기본) | 346.74 MHz | 여유 큼 |
+| `tabs9_85hz` | 497.16 MHz | 타깃 호스트에서 동작 실측 |
+| `tabs9_95hz` | 558.25 MHz | 타깃 호스트에서 동작 실측 |
+| `tabs9_100hz` | 589.15 MHz | 네이티브 해상도에서 인코딩 가능한 최대치 |
+
+`--profile` 로 선택한다. 생성기는 인코딩 불가능한 모드를 조용히 잘라내지 않고 에러로 거부한다.
+
+어느 프로파일이 실제로 동작하는지는 플랫폼에 달렸다 — 디스플레이 PLL이 모든 픽셀클럭을 합성하지 못하는데 그 공백은 어디에도 고지되지 않는다. 타깃 호스트에서는 88 Hz·90 Hz가 프루닝되고 85·95·100 Hz는 통과한다. 즉 모드가 안 뜬다고 블롭이 잘못된 것은 아니다. 판정 기준은 커넥터다: `cat /sys/class/drm/card*-HDMI-A-1/modes`.
+
+### EDID에는 CTA-861 확장이 필요하다
+
+타이밍이 아무리 정확해도 베이스 블록만으로는 동작하지 않는다. HDMI IEEE OUI `00-0C-03` 을 담은 CTA-861 확장이 없으면 커널이 싱크를 DVI로 판정해 **165 MHz** 를 넘는 모든 것을 프루닝한다 — 타깃 호스트 실측으로 148 MHz는 통과, 168 MHz는 프루닝이라 이 프로젝트가 노리는 모드는 전부 사라진다. 340 MHz를 넘으면 문자율을 고지할 HDMI Forum VSDB(`C4-5D-D8`)까지 추가로 필요하다.
+
+`edid/generate.py` 는 둘 다 생성하며, 그래서 정상 블롭은 128바이트가 아니라 256바이트다. `scripts/verify.sh` 가 둘의 존재를 검사한다. 측정치는 [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
 
 ---
 
@@ -46,8 +69,10 @@ Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수
 
 - Arch Linux, 커널 `linux` 또는 `linux-zen` 6.x 이상
 - KDE Plasma 6 (Wayland) — 타 컴포지터 미검증
-- [Sunshine](https://github.com/LizardByte/Sunshine) (AUR)
+- [Sunshine](https://github.com/LizardByte/Sunshine) — AUR. `sunshine`(소스) 또는 `sunshine-bin`(프리빌트, 설치기 기본). `--sunshine-pkg` 로 변경.
 - [Moonlight](https://moonlight-stream.org/) Android 클라이언트
+- `intel-media-driver` — **하드웨어 인코딩에 필수.** 없으면 libva 초기화가 실패하고 Sunshine이 경고 없이 `libx264` 로 폴백한다.
+- `edid-decode` — 선택. `scripts/verify.sh` 가 설치된 blob 검증에 사용
 
 ---
 
@@ -56,23 +81,54 @@ Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수
 ```
 install.sh            진입점 — 기본 dry-run, --apply 로 실행
 lib/
-  util.sh             로깅 + dry-run 실행기 (run_cmd, run_sudo)
+  util.sh             로깅 + dry-run 실행기 + 문자열 헬퍼
+  bootstrap.sh        플랫폼 감지 + 어댑터 로딩. 두 진입점이 공유
   ports.sh            자동 감지 + 포트 디스패처 함수
   core.sh             설치 단계 (EDID → 커널 → initramfs → Sunshine → udev)
 adapters/
   bootloader/         systemd_boot.sh · grub.sh
   initramfs/          mkinitcpio.sh · dracut.sh
   pkg/                yay.sh · paru.sh · pacman.sh
-edid/                 2960×1848@120 EDID 생성 스크립트 (CVT-RB2) — 작업 중
+edid/
+  generate.py         CVT-RB2 EDID 1.4 생성기. 출력은 edid-decode 로 검증
+  generated/          생성된 .bin blob (설치기 출력 경로)
 udev/                 uinput 접근 규칙 (sunshine-uinput 그룹)
-scripts/              verify.sh · uninstall.sh — 작업 중
-docs/                 latency tuning, security model, troubleshooting
+scripts/
+  verify.sh           설치 후 읽기 전용 점검
+  uninstall.sh        install.sh 역순 복원. 기본 dry-run
+docs/
+  troubleshooting.md  실측한 실패 양상과 대처
 ```
 
 install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다.
 `--bootloader`, `--initramfs`, `--pkg` 플래그로 재정의 가능. `--help` 참조.
 
-현재 미완성: `edid/generate.py` (다음 단계) 및 스트리밍·터치 절반.
+## 사용법
+
+```bash
+./install.sh                            # dry-run: 바꿀 내용을 전부 출력만
+./install.sh --apply                    # 실제 적용
+./install.sh --apply --profile tabs9_100hz
+
+# 재부팅 후
+./scripts/verify.sh                     # 읽기 전용 점검. 실패 시 exit 1
+./scripts/uninstall.sh --apply          # 전부 되돌리기
+```
+
+가상 출력이 생긴 뒤 자동으로 되지 않는 것이 둘 있다:
+
+```bash
+# 1. Sunshine이 그 출력을 잡게 한다 — 안 하면 계속 내장 패널을 캡처한다.
+#    인덱스는 아래 줄들의 순서(0부터):
+journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monitor'
+./install.sh --apply --sunshine-output 1
+
+# 2. 내장 패널과 배율을 맞춘다 — 새 출력은 scale 1로 올라오는데,
+#    14.6" 2960x1848 패널에서는 모든 것이 절반 크기로 그려진다.
+kscreen-doctor output.HDMI-A-1.scale.2
+```
+
+남은 것: 부팅 경로 재부팅 검증, 터치/펜 리턴, Wi-Fi 6E 전송. 스트리밍과 페어링은 동작한다.
 
 ---
 
@@ -85,7 +141,7 @@ install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다
 1. `setcap cap_sys_admin+p sunshine` — Sunshine 바이너리에 커널급 능력을 영구 부여. 업스트림 RCE 발생 시 즉시 루트급 영향. [Sunshine Security Advisories](https://github.com/LizardByte/Sunshine/security) 주시하고 최소 검증 버전 로컬 배포에 명시.
 2. Moonlight 페어링은 **4자리 PIN 기반 TOFU**. 신뢰 가능한 LAN에서만 페어링.
 3. Sunshine 기본 바인딩은 `0.0.0.0` + UPnP. 방화벽으로 USB 테더링 NIC 또는 WireGuard 인터페이스만 허용.
-4. `uinput` 접근 개방 시 로그인 세션 내 모든 프로세스가 가상 입력 장치를 만들 수 있음 — 잠재적 키로거 / 자동화 표면. udev 규칙을 전용 그룹(`sunshine-uinput`)으로 제한할 것.
+4. `uinput` 접근 개방 시 로그인 세션 내 모든 프로세스가 가상 입력 장치를 만들 수 있음 — 잠재적 키로거 / 자동화 표면. 이 저장소의 udev 규칙은 노드를 전용 `sunshine-uinput` 그룹에 넣지만, Sunshine 패키지가 자체 규칙에 `TAG+="uaccess"` 를 걸어 로그인 사용자에게 ACL을 주므로 그룹은 경계가 아니라 정돈 수준이다. `scripts/verify.sh` 가 패키지 규칙을 감지하면 이를 알려주며, 실제로 강제하는 방법은 [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
 5. 캡처는 `xdg-desktop-portal` 경유를 원칙으로. "sudo로 실행해서 우회"는 지양.
 
 ### 절대 커밋하지 말 것 (`.gitignore`로 차단됨)
