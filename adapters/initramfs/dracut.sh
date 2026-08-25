@@ -13,6 +13,8 @@ _dracut_initramfs_add_file() {
   log "Adding to dracut conf: $src"
   run_sudo mkdir -p /etc/dracut.conf.d
   run_append "install_items+=\" ${src} \"" "$conf"
+  # shellcheck disable=SC2034  # read by _core_initramfs once sourced
+  INITRAMFS_DIRTY=true
 }
 
 _dracut_initramfs_rebuild() {

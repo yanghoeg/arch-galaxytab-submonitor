@@ -100,6 +100,7 @@ edid/
   generated/          Generated .bin blobs (installer output path)
 udev/                 uinput access rules  (sunshine-uinput group)
 scripts/
+  session.sh          Day-to-day: start Sunshine and report readiness
   verify.sh           Read-only post-install check
   uninstall.sh        Reverses install.sh, dry-run by default
 docs/
@@ -126,7 +127,10 @@ It auto-detects your bootloader, initramfs tool and AUR helper; override any of
 them with `--bootloader`, `--initramfs`, `--pkg`. See `--help` for everything.
 
 The bootloader entry and initramfs config are backed up with a timestamp before
-they are edited. Re-running `--apply` is a no-op for anything already in place.
+they are edited. Re-running `--apply` is a no-op for anything already in place,
+including the initramfs: it is only rebuilt when the blob or the config actually
+changed, which matters on a Secure Boot system where the rebuild drags kernel
+re-signing along with it.
 
 By default the installer runs `systemctl --user enable --now`, so Sunshine comes
 up with your graphical session. If you would rather launch it yourself:
@@ -279,6 +283,38 @@ In Moonlight's settings, pick **HEVC** and raise the bitrate. The default is far
 too low for 2960×1848; USB tethering has the headroom for 50–100 Mbps. Do not
 pick AV1 unless your host GPU can encode it — Intel iGPUs through Raptor Lake
 decode AV1 but cannot encode it, and Sunshine will fall back to software.
+
+### Day to day
+
+Once installed, the virtual output is simply there — it comes up from the kernel
+command line at boot and needs nothing from this repo. All that is left is
+having Sunshine running before you reach for the tablet:
+
+```bash
+./scripts/session.sh
+```
+
+```
+  virtual output   2960x1848, scale 2
+  sunshine         started (was inactive)
+  capture target   output_name = 1  -> ...HDMI-A-1-Virtual Sub
+  encoder          hevc_vaapi [vaapi]
+  firewall         active, Sunshine ports open
+  tethering        <iface> <address>
+  discovery        advertised over mDNS
+
+══ Ready — open Moonlight on the tablet ══
+```
+
+It starts the service if it is not running and then checks the things that
+actually stop a connection: an output stuck at scale 1, a capture target
+pointing at the wrong screen, a software encoder fallback, a firewall with no
+rule for Sunshine, tethering that is not up, and whether mDNS is advertising.
+Non-zero exit if any of those are wrong. `--no-start` reports without touching
+anything.
+
+Do not use `install.sh` for this. It edits the bootloader entry and can rebuild
+the initramfs; it is an installer, not a launcher.
 
 ### Uninstall
 

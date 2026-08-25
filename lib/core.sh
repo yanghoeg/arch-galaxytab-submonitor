@@ -2,6 +2,11 @@
 # Core install logic. Knows WHAT to configure; HOW is delegated to ports.
 # Depends on: lib/util.sh, lib/ports.sh, and the loaded adapter functions.
 
+# Rebuilding the initramfs is the slowest thing here — on a Secure Boot system it
+# drags kernel re-signing along with it — so only do it when the EDID blob or the
+# initramfs config actually changed. The adapters set this when they edit.
+INITRAMFS_DIRTY=false
+
 # ── Steps ─────────────────────────────────────────────────────────────────────
 
 _core_edid() {
@@ -28,7 +33,15 @@ _core_edid() {
   fi
 
   run_sudo mkdir -p /usr/lib/firmware/edid
-  run_sudo cp "$src" "$dst"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    run_sudo cp "$src" "$dst"
+    INITRAMFS_DIRTY=true
+  elif sudo cmp -s "$src" "$dst" 2>/dev/null; then
+    log "Installed blob is already identical: $dst"
+  else
+    run_sudo cp "$src" "$dst"
+    INITRAMFS_DIRTY=true
+  fi
   port_initramfs_add_file "$dst"
 }
 
@@ -40,6 +53,10 @@ _core_kernel_params() {
 
 _core_initramfs() {
   log_step "Initramfs: rebuild"
+  if [[ "$INITRAMFS_DIRTY" != "true" ]]; then
+    log "Neither the blob nor the config changed — skipping rebuild."
+    return 0
+  fi
   port_initramfs_rebuild
 }
 

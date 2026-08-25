@@ -14,6 +14,8 @@ _mkinitcpio_initramfs_add_file() {
   log "Adding to mkinitcpio.conf FILES: $src"
   # Prepend into FILES=(...) — works for both FILES=() and FILES=(existing ...)
   run_sudo sed -i "s|^FILES=(|FILES=(${src} |" "$conf"
+  # shellcheck disable=SC2034  # read by _core_initramfs once sourced
+  INITRAMFS_DIRTY=true
 }
 
 _mkinitcpio_initramfs_rebuild() {

@@ -100,6 +100,7 @@ edid/
   generated/          생성된 .bin blob (설치기 출력 경로)
 udev/                 uinput 접근 규칙 (sunshine-uinput 그룹)
 scripts/
+  session.sh          일상 사용: Sunshine 기동 + 준비상태 보고
   verify.sh           설치 후 읽기 전용 점검
   uninstall.sh        install.sh 역순 복원. 기본 dry-run
 docs/
@@ -123,7 +124,7 @@ install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다
 
 부트로더·initramfs 도구·AUR 헬퍼는 자동 감지하며 `--bootloader`, `--initramfs`, `--pkg` 로 재정의한다. 전체 옵션은 `--help` 참조.
 
-부트 엔트리와 initramfs 설정은 편집 직전 타임스탬프 백업을 뜬다. 이미 적용된 항목에 `--apply` 를 다시 돌리면 no-op이다.
+부트 엔트리와 initramfs 설정은 편집 직전 타임스탬프 백업을 뜬다. 이미 적용된 항목에 `--apply` 를 다시 돌리면 no-op이며, initramfs도 블롭이나 설정이 실제로 바뀌었을 때만 재빌드한다 — Secure Boot 환경에서는 재빌드에 커널 재서명이 딸려오므로 이 차이가 크다.
 
 기본값은 `systemctl --user enable --now` 라 그래픽 세션과 함께 Sunshine이 올라온다. 직접 띄우고 싶다면:
 
@@ -236,6 +237,30 @@ avahi-browse -atr | grep nvstream
 탭에 [Moonlight](https://moonlight-stream.org/) 을 설치하고 실행한다. 7번을 했다면 호스트가 저절로 뜨고, 안 했다면 호스트 주소를 수동으로 추가한다. 탭한 뒤 화면에 뜬 PIN을 Sunshine 웹 UI에 입력한다. 페어링은 4자리 PIN 기반 TOFU이므로 신뢰할 수 있는 링크에서 할 것 — USB 테더링이면 그냥 케이블이다.
 
 Moonlight 설정에서 **HEVC** 를 고르고 비트레이트를 올린다. 기본값은 2960×1848에 턱없이 낮고, USB 테더링은 50~100 Mbps를 감당한다. 호스트 GPU가 AV1 인코드를 못 하면 AV1은 고르지 말 것 — Raptor Lake까지의 Intel iGPU는 AV1을 디코드만 하고 인코드는 못 해서 Sunshine이 소프트웨어로 폴백한다.
+
+### 일상 사용
+
+설치가 끝나면 가상 출력은 그냥 거기 있다 — 부팅 시 커널 커맨드라인으로 올라오며 이 저장소가 관여할 일이 없다. 남는 것은 탭을 집기 전에 Sunshine이 떠 있게 하는 것뿐이다.
+
+```bash
+./scripts/session.sh
+```
+
+```
+  virtual output   2960x1848, scale 2
+  sunshine         started (was inactive)
+  capture target   output_name = 1  -> ...HDMI-A-1-Virtual Sub
+  encoder          hevc_vaapi [vaapi]
+  firewall         active, Sunshine ports open
+  tethering        <iface> <address>
+  discovery        advertised over mDNS
+
+══ Ready — open Moonlight on the tablet ══
+```
+
+서비스가 안 떠 있으면 띄우고, 실제로 연결을 막는 것들을 점검한다 — scale 1에 묶인 출력, 엉뚱한 화면을 가리키는 캡처 대상, 소프트웨어 인코더 폴백, Sunshine 규칙이 없는 방화벽, 올라오지 않은 테더링, mDNS 광고 여부. 하나라도 어긋나면 exit 1. `--no-start` 는 아무것도 건드리지 않고 보고만 한다.
+
+이 용도로 `install.sh` 를 쓰지 말 것. 부트 엔트리를 편집하고 initramfs를 재빌드할 수 있는 설치기이지 런처가 아니다.
 
 ### 제거
 
