@@ -174,6 +174,80 @@ has no desktop icons on it, only the wallpaper.
 
 ---
 
+## The whole firewall disappears after a reboot
+
+`nft list tables` comes back empty, `systemctl is-active nftables` says `failed`,
+and the machine is running with no ruleset at all — including no `policy drop`.
+
+**Cause.** An `iif` match resolves the interface name to an ifindex *when the
+ruleset loads*. If that interface does not exist at load time, `nft -f` rejects
+the **entire file**, so one stale name takes the whole firewall down rather than
+just its own rule:
+
+```
+/etc/sysconfig/nftables.conf:7: Error: Interface does not exist
+define TAB_IF = "enp0s13f0u1"
+```
+
+USB tethering hits this two ways. The NIC is named after its USB port path, so
+moving the cable renames it (`enp0s13f0u1` -> `enp0s13f0u3`), and at boot the
+tablet is usually not plugged in at all, so the interface is simply absent.
+
+**Fix.** Use `iifname`, which compares the name per packet and tolerates both an
+absent and a renamed interface, and make it a wildcard so the port does not
+matter:
+
+```
+define TAB_IF = "enp0s13f0u*"
+iifname $TAB_IF tcp dport { 47984, 47989, 48010 } accept
+iifname $TAB_IF udp dport { 47998-48000, 48002 } accept
+```
+
+Verify it survives the interface being gone — this is the check that matters,
+and it passes even with the tablet unplugged:
+
+```bash
+sudo nft -c -f /etc/nftables.conf   # or wherever your ruleset actually lives
+```
+
+Note that `nftables.service` may not load the file you think it does. A drop-in
+under `/etc/systemd/system/nftables.service.d/` can repoint `ExecStart`; check
+`systemctl cat nftables` before editing anything.
+
+---
+
+## Moonlight cannot find the host after a reboot
+
+The saved host shows a grey icon with a warning triangle, and adding it manually
+by its old address fails.
+
+**Cause.** With USB tethering the tablet is the DHCP server and the host is the
+client, so the host's address changes across reconnects — on this setup the
+host moved to a different address within the same /24 after a reboot. Moonlight
+stores the address, not a name.
+
+**Fix.** Check the current address and re-add the host:
+
+```bash
+ip -br addr show label 'enp*u*'
+```
+
+Auto-discovery does not paper over this by default: Sunshine publishes its mDNS
+record through Avahi, and if `avahi-daemon` is inactive it never advertises at
+all. Port 5353 being bound by `systemd-resolved` is not the same thing and does
+not help. To make discovery work you need `avahi-daemon` running *and* UDP 5353
+opened on the tethering interface.
+
+If you script the address into Moonlight over `adb`, prefer key events over
+`input text` — the latter races with the IME and silently mangles the string
+(a `10.x.y.z` address arrived with a duplicated leading octet and a trailing dot):
+
+```bash
+adb shell 'for k in KEYCODE_1 KEYCODE_0 KEYCODE_PERIOD ...; do input keyevent $k; done'
+```
+
+---
+
 ## Enforcing the uinput group properly
 
 `udev/60-tabdisp-uinput.rules` puts `/dev/uinput` in a `sunshine-uinput` group,

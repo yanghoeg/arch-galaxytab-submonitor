@@ -147,7 +147,7 @@ kscreen-doctor output.HDMI-A-1.scale.2
 
 1. `setcap cap_sys_admin+p sunshine` — Sunshine 바이너리에 커널급 능력을 영구 부여. 업스트림 RCE 발생 시 즉시 루트급 영향. [Sunshine Security Advisories](https://github.com/LizardByte/Sunshine/security) 주시하고 최소 검증 버전 로컬 배포에 명시.
 2. Moonlight 페어링은 **4자리 PIN 기반 TOFU**. 신뢰 가능한 LAN에서만 페어링.
-3. Sunshine 기본 바인딩은 `0.0.0.0` + UPnP. 방화벽으로 USB 테더링 NIC 또는 WireGuard 인터페이스만 허용.
+3. Sunshine 기본 바인딩은 `0.0.0.0` + UPnP. 방화벽으로 USB 테더링 NIC 또는 WireGuard 인터페이스만 허용. nftables 규칙을 그 NIC으로 한정할 때는 `iif` 말고 **`iifname` + 와일드카드**를 쓸 것 — `iif` 는 로드 시점에 이름을 해석하므로, 부팅 시 USB NIC이 없거나 다른 포트로 잡히면 룰셋 전체가 로드에 실패해 방화벽이 통째로 사라진다. [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
 4. `uinput` 접근 개방 시 로그인 세션 내 모든 프로세스가 가상 입력 장치를 만들 수 있음 — 잠재적 키로거 / 자동화 표면. 이 저장소의 udev 규칙은 노드를 전용 `sunshine-uinput` 그룹에 넣지만, Sunshine 패키지가 자체 규칙에 `TAG+="uaccess"` 를 걸어 로그인 사용자에게 ACL을 주므로 그룹은 경계가 아니라 정돈 수준이다. `scripts/verify.sh` 가 패키지 규칙을 감지하면 이를 알려주며, 실제로 강제하는 방법은 [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
 5. 캡처는 `xdg-desktop-portal` 경유를 원칙으로. "sudo로 실행해서 우회"는 지양.
 
