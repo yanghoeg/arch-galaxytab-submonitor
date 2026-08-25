@@ -253,49 +253,58 @@ adb shell 'for k in KEYCODE_1 KEYCODE_0 KEYCODE_PERIOD ...; do input keyevent $k
 Surprising direction: a lossy HEVC stream on the tablet renders text more
 crisply than the laptop's own screen showing the same desktop.
 
-**Not brightness.** Worth ruling out first, since a dim OLED reads as soft, but
-the effect survives turning the panel up.
+This one is **not solved**. What follows is what has been ruled in or out, so
+you do not repeat the dead ends.
 
-**Not resolution either, mostly.** The density gap is real but small. Taken from
-the built-in panel's own EDID (`344 x 215 mm`, so a 15.97" diagonal) against the
-tablet's published 14.6":
+**Brightness is not it.** Worth ruling out first, since a dim OLED reads as
+soft, but the effect survives turning the panel up.
+
+**Pixel density is real but minor.** From the built-in panel's own EDID
+(`344 x 215 mm`, a 15.97" diagonal) against the tablet's published 14.6":
 
 | Panel | Pixels | PPI |
 |-------|--------|-----|
 | Built-in | 2880x1800 | 212.7 |
 | Tablet | 2960x1848 | 239.0 |
 
-12.4% denser. Noticeable side by side, not enough on its own to read as "blurry
+12.4% denser. Visible side by side, not enough on its own to read as "blurry
 versus sharp".
 
-**Cause.** KDE defaults to `XftSubPixel=rgb` in `~/.config/kdeglobals` —
-subpixel antialiasing, which deliberately spreads colour across a glyph's edges
-to borrow horizontal resolution from the panel's subpixels. That only works if
-the subpixels really are in RGB stripes. Samsung AMOLED laptop panels use a
-diamond/PenTile arrangement instead, with half as many red and blue subpixels
-and in different positions, so the colour fringing lands wrong and the eye reads
-it as haze. This is the long-standing "text looks bad on OLED laptops"
-complaint.
+**Subpixel antialiasing is a tempting explanation that did not hold up.** KDE
+defaults to `XftSubPixel=rgb`, which spreads colour across glyph edges to borrow
+horizontal resolution from the panel's subpixels, and only works if those
+subpixels really are in RGB stripes. If they are not, the fringing lands wrong
+and reads as haze — and Sunshine's YUV 4:2:0 encoding would subsample that
+fringing away, leaving the tablet with cleaner-looking grayscale antialiasing.
+That story fits the symptom, but switching to grayscale made things look *worse*
+on the test machine, not better.
 
-**Why the tablet escapes it.** Sunshine encodes in YUV 4:2:0, so chroma is
-subsampled by two in each axis. That averages the colour fringes away, and the
-tablet receives something close to plain grayscale antialiasing. The compression
-step is acting as a filter.
+Two caveats on that result, both unresolved:
 
-**Fix.** Switch to grayscale antialiasing: System Settings → Text & Fonts →
-Antialiasing, set subpixel rendering to **None**, then log out and back in. Or
-set `XftSubPixel=none` in `~/.config/kdeglobals` directly.
+- The test was confounded. Changing the setting without logging out leaves a
+  mixed state — toolkits with cached glyph atlases keep the old rendering while
+  newly drawn text uses the new one, which looks worse than either setting on
+  its own. A fair comparison needs a full log out and back in.
+- There is no way to read a panel's subpixel layout from software, so "Samsung
+  AMOLED, therefore PenTile" is an assumption, not a measurement. If the panel
+  is RGB-striped, `rgb` is simply correct and turning it off should look worse.
 
-Check what you currently have with:
+So if you want to test it, change the setting and then log out and back in
+before judging:
 
 ```bash
 grep Xft ~/.config/kdeglobals
 fc-match --verbose sans | grep -E 'rgba|lcdfilter'
 ```
 
-Which factor dominates depends on the panel, so treat the ordering above as the
-sequence to test rather than a verdict: rule out brightness, then subpixel
-rendering, and only then attribute what is left to pixel density.
+System Settings → Text & Fonts → Antialiasing, or `XftSubPixel=none` in
+`~/.config/kdeglobals`.
+
+**Still unaccounted for.** The remaining candidate is the tablet's own display
+processing — Samsung's default "Vivid" screen mode applies contrast and edge
+enhancement, which would make the streamed copy genuinely look sharper than the
+source without being more faithful to it. Switching the tablet to "Natural" is
+the obvious next comparison and has not been done.
 
 ---
 

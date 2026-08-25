@@ -173,7 +173,7 @@ kscreen-doctor output.HDMI-A-1.scale.2
 
 scale 2면 논리 해상도가 1480×924가 되어, 흔한 1440×900 노트북 데스크톱과 충분히 가까워 UI 요소가 양쪽에서 같은 물리 크기로 보인다.
 
-이건 글자가 *작은* 문제를 고치는 것이다. 글자가 *흐린* 것은 별개이며, 내장 패널이 탭에 뜬 압축 스트림보다 더 나빠 보인다면 대개 RGB 스트라이프가 아닌 패널에 서브픽셀 안티에일리어싱이 걸려 있는 탓이다. [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
+이건 글자가 *작은* 문제를 고치는 것이다. 글자가 *흐린* 것은 별개이고 아직 규명하지 못한 문제다 — 내장 패널이 탭에 뜬 압축 스트림보다 오히려 나빠 보인다면 지금까지 무엇이 배제됐는지 [`docs/troubleshooting.md`](docs/troubleshooting.md) 를 참조.
 
 ### 5. Sunshine 웹 UI 계정 생성
 
