@@ -173,6 +173,8 @@ kscreen-doctor output.HDMI-A-1.scale.2
 
 scale 2면 논리 해상도가 1480×924가 되어, 흔한 1440×900 노트북 데스크톱과 충분히 가까워 UI 요소가 양쪽에서 같은 물리 크기로 보인다.
 
+이건 글자가 *작은* 문제를 고치는 것이다. 글자가 *흐린* 것은 별개이며, 내장 패널이 탭에 뜬 압축 스트림보다 더 나빠 보인다면 대개 RGB 스트라이프가 아닌 패널에 서브픽셀 안티에일리어싱이 걸려 있는 탓이다. [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
+
 ### 5. Sunshine 웹 UI 계정 생성
 
 최초 실행 시 한 번만. <https://localhost:47990> 을 열고 자체서명 인증서 경고를 넘긴 뒤 사용자명·비밀번호를 만든다. 이 자격증명과 페어링 키는 `~/.config/sunshine/` 에 저장되며, `.gitignore` 가 차단하고 `scripts/uninstall.sh` 도 의도적으로 건드리지 않는다.

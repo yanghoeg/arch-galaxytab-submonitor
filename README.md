@@ -196,6 +196,11 @@ kscreen-doctor output.HDMI-A-1.scale.2
 Scale 2 gives a logical 1480×924, which is close enough to a typical 1440×900
 laptop desktop that UI elements end up the same physical size on both.
 
+This fixes text being too *small*. Text being *soft* is a separate problem — and
+if your built-in panel looks worse than the compressed stream on the tablet, the
+usual cause is subpixel antialiasing on a panel that is not RGB-striped. See
+[`docs/troubleshooting.md`](docs/troubleshooting.md).
+
 ### 5. Create the Sunshine web UI login
 
 First run only. Open <https://localhost:47990>, accept the self-signed

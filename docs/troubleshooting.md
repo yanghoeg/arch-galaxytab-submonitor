@@ -248,6 +248,57 @@ adb shell 'for k in KEYCODE_1 KEYCODE_0 KEYCODE_PERIOD ...; do input keyevent $k
 
 ---
 
+## Text looks blurry on the built-in panel, sharper on the tablet
+
+Surprising direction: a lossy HEVC stream on the tablet renders text more
+crisply than the laptop's own screen showing the same desktop.
+
+**Not brightness.** Worth ruling out first, since a dim OLED reads as soft, but
+the effect survives turning the panel up.
+
+**Not resolution either, mostly.** The density gap is real but small. Taken from
+the built-in panel's own EDID (`344 x 215 mm`, so a 15.97" diagonal) against the
+tablet's published 14.6":
+
+| Panel | Pixels | PPI |
+|-------|--------|-----|
+| Built-in | 2880x1800 | 212.7 |
+| Tablet | 2960x1848 | 239.0 |
+
+12.4% denser. Noticeable side by side, not enough on its own to read as "blurry
+versus sharp".
+
+**Cause.** KDE defaults to `XftSubPixel=rgb` in `~/.config/kdeglobals` —
+subpixel antialiasing, which deliberately spreads colour across a glyph's edges
+to borrow horizontal resolution from the panel's subpixels. That only works if
+the subpixels really are in RGB stripes. Samsung AMOLED laptop panels use a
+diamond/PenTile arrangement instead, with half as many red and blue subpixels
+and in different positions, so the colour fringing lands wrong and the eye reads
+it as haze. This is the long-standing "text looks bad on OLED laptops"
+complaint.
+
+**Why the tablet escapes it.** Sunshine encodes in YUV 4:2:0, so chroma is
+subsampled by two in each axis. That averages the colour fringes away, and the
+tablet receives something close to plain grayscale antialiasing. The compression
+step is acting as a filter.
+
+**Fix.** Switch to grayscale antialiasing: System Settings → Text & Fonts →
+Antialiasing, set subpixel rendering to **None**, then log out and back in. Or
+set `XftSubPixel=none` in `~/.config/kdeglobals` directly.
+
+Check what you currently have with:
+
+```bash
+grep Xft ~/.config/kdeglobals
+fc-match --verbose sans | grep -E 'rgba|lcdfilter'
+```
+
+Which factor dominates depends on the panel, so treat the ordering above as the
+sequence to test rather than a verdict: rule out brightness, then subpixel
+rendering, and only then attribute what is left to pixel density.
+
+---
+
 ## Enforcing the uinput group properly
 
 `udev/60-tabdisp-uinput.rules` puts `/dev/uinput` in a `sunshine-uinput` group,
@@ -257,7 +308,7 @@ but the Sunshine packages ship `/usr/lib/udev/rules.d/60-sunshine.rules` with
 ```
 $ getfacl -p /dev/uinput
 user::rw-
-user:yanghoeg:rw-      <- uaccess, not the group
+user:<you>:rw-         <- uaccess, not the group
 group::---
 ```
 
