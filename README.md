@@ -9,6 +9,13 @@ An open stack for using a Samsung Galaxy Tab as a secondary display on Arch Linu
 Born from the fact that there is no first-class native-resolution secondary-monitor solution for Galaxy Tab on Linux — only crude web-based tools exist.
 
 > **Status: alpha / personal.** Target-validated only on a Galaxy Book Ultra 3 (Intel + NVIDIA PRIME Optimus) host and a Galaxy Tab S9 Ultra client. Other combinations are unverified.
+>
+> **Working, measured on hardware:** the 2960×1848 virtual output, KDE extending onto it, `hevc_vaapi` capture of that output, and Moonlight streaming over USB-C tethering.
+>
+> **Not verified yet:**
+> - **Pen / touch return input.** The `uinput` path is wired and `/dev/uinput` is writable, but no input has actually been round-tripped — Sunshine's virtual input device has never appeared in `/proc/bus/input/devices`.
+> - **Wi-Fi 6E transport.** Only USB-C tethering has been exercised; the firewall rules scope Sunshine to that interface alone.
+> - **The boot-time path.** `install.sh --apply` writes the kernel parameters and puts the EDID in the initramfs, but this has not been through a reboot — the running virtual output was brought up live via debugfs.
 
 ---
 

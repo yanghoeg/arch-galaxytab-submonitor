@@ -8,7 +8,14 @@ Galaxy Tab을 Arch Linux의 보조 디스플레이로 사용하기 위한 오픈
 
 Galaxy Tab을 리눅스에서 네이티브 해상도 보조 모니터로 쓸 수 있는 1급 솔루션이 없다는 사실 — 웹 기반 조악한 도구만 존재 — 에서 출발한 프로젝트다.
 
-> **Status: alpha / personal.** Galaxy Book Ultra 3 (Intel + NVIDIA PRIME Optimus) 호스트와 Galaxy Tab S9 Ultra 클라이언트 조합에서만 검증 예정. 다른 하드웨어 조합은 미검증.
+> **Status: alpha / personal.** Galaxy Book Ultra 3 (Intel + NVIDIA PRIME Optimus) 호스트와 Galaxy Tab S9 Ultra 클라이언트 조합에서만 검증. 다른 하드웨어 조합은 미검증.
+>
+> **실기에서 확인된 것:** 2960×1848 가상 출력, KDE 확장 배치, 해당 출력의 `hevc_vaapi` 캡처, USB-C 테더링 경유 Moonlight 스트리밍.
+>
+> **아직 미검증:**
+> - **펜 / 터치 리턴 인풋.** `uinput` 경로는 연결돼 있고 `/dev/uinput` 쓰기도 열려 있지만, 실제 입력을 왕복시켜 본 적이 없다 — Sunshine 가상 입력 장치가 `/proc/bus/input/devices` 에 나타난 적이 없다.
+> - **Wi-Fi 6E 전송.** USB-C 테더링만 검증했고, 방화벽 규칙도 그 인터페이스에만 열려 있다.
+> - **부팅 경로.** `install.sh --apply` 가 커널 파라미터를 쓰고 EDID를 initramfs에 넣지만 재부팅을 거치지 않았다 — 현재 떠 있는 가상 출력은 debugfs로 라이브 적용한 것이다.
 
 ---
 
