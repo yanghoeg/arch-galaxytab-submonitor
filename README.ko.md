@@ -125,6 +125,16 @@ install.sh 는 부트로더·initramfs 도구·AUR 헬퍼를 자동 감지한다
 
 부트 엔트리와 initramfs 설정은 편집 직전 타임스탬프 백업을 뜬다. 이미 적용된 항목에 `--apply` 를 다시 돌리면 no-op이다.
 
+기본값은 `systemctl --user enable --now` 라 그래픽 세션과 함께 Sunshine이 올라온다. 직접 띄우고 싶다면:
+
+```bash
+./install.sh --apply --no-enable          # 실행만 하고 자동시작은 건드리지 않음
+```
+
+자동시작과 "지금 실행 중"은 별개다. `systemctl --user disable` 은 자동시작 심링크만 지우고 실행 중인 서비스를 멈추지 않으며, 이후에도 수동 `start` 는 된다. `--no-enable` 없이 나중에 `--apply` 를 다시 돌리면 자동시작이 조용히 되살아나 그 선택을 덮어쓴다 — 이 플래그가 존재하는 이유가 그것이다. `scripts/verify.sh` 는 두 상태를 따로 보고한다.
+
+한 가지 주의: 유닛에 `Alias=sunshine.service` 가 있지만 별칭 심링크는 `enable` 이 만든다. 한 번도 enable 하지 않은 상태에서는 짧은 `systemctl --user start sunshine` 이 해석되지 않으므로 정식 이름 `app-dev.lizardbyte.app.Sunshine.service` 를 써야 한다.
+
 ### 2. 재부팅 후 검증
 
 커널 파라미터는 다음 부팅부터 적용되고, EDID는 그 이른 시점에 읽혀야 한다 — initramfs에 넣는 이유가 이것이다.

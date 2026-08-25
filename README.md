@@ -128,6 +128,24 @@ them with `--bootloader`, `--initramfs`, `--pkg`. See `--help` for everything.
 The bootloader entry and initramfs config are backed up with a timestamp before
 they are edited. Re-running `--apply` is a no-op for anything already in place.
 
+By default the installer runs `systemctl --user enable --now`, so Sunshine comes
+up with your graphical session. If you would rather launch it yourself:
+
+```bash
+./install.sh --apply --no-enable          # start it, leave autostart alone
+```
+
+Autostart and "running right now" are independent. `systemctl --user disable`
+removes the autostart symlink without stopping anything, and the service can
+still be started by hand afterwards. Without `--no-enable`, a later `--apply`
+would quietly re-enable autostart and undo that choice — which is the whole
+reason the flag exists. `scripts/verify.sh` reports the two states separately.
+
+One caveat: the unit ships `Alias=sunshine.service`, but the alias symlink is
+created by `enable`. Until you have enabled it once, the short
+`systemctl --user start sunshine` will not resolve; use the full unit name
+`app-dev.lizardbyte.app.Sunshine.service`.
+
 ### 2. Reboot, then verify
 
 The kernel parameters only take effect on the next boot, and the EDID has to be

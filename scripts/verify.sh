@@ -8,6 +8,7 @@ source "$SCRIPT_DIR/lib/util.sh"
 
 EDID_CONNECTOR="HDMI-A-1"
 EDID_PROFILE="tabs9_60hz"
+SUNSHINE_UNIT="app-dev.lizardbyte.app.Sunshine.service"
 
 usage() {
   cat <<USAGE
@@ -181,10 +182,18 @@ if sunshine_bin=$(command -v sunshine 2>/dev/null); then
     echo  "         usually the built-in panel rather than the virtual output"
   fi
 
-  if systemctl --user is-enabled sunshine &>/dev/null; then
-    ok "user service enabled ($(systemctl --user is-active sunshine 2>/dev/null))"
+  # Autostart and "is it running right now" are independent: --no-enable and a
+  # manual systemctl --user disable both leave a perfectly usable service.
+  unit_state=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
+  if [[ "$unit_state" == "active" ]]; then
+    ok "user service running"
   else
-    soft "systemd user service 'sunshine' is not enabled"
+    bad "user service is $unit_state"
+  fi
+  if systemctl --user is-enabled "$SUNSHINE_UNIT" &>/dev/null; then
+    ok "autostart enabled (graphical-session.target)"
+  else
+    soft "autostart is disabled — start it by hand, or re-run the installer"
   fi
 else
   bad "sunshine binary not found"

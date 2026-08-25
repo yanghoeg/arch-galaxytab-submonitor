@@ -66,7 +66,12 @@ _core_sunshine() {
   log_step "Sunshine: uinput group + systemd user service"
   run_sudo groupadd -f sunshine-uinput
   run_sudo usermod -aG sunshine-uinput "$USER"
-  run_cmd systemctl --user enable --now "$SUNSHINE_UNIT"
+  if [[ "${SUNSHINE_ENABLE:-true}" == "true" ]]; then
+    run_cmd systemctl --user enable --now "$SUNSHINE_UNIT"
+  else
+    log "--no-enable: starting without touching your autostart setting."
+    run_cmd systemctl --user start "$SUNSHINE_UNIT"
+  fi
 }
 
 _core_sunshine_output() {

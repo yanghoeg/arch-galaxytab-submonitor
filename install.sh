@@ -17,6 +17,9 @@ SUNSHINE_PKG="sunshine-bin"
 SUNSHINE_UNIT="app-dev.lizardbyte.app.Sunshine.service"
 # Empty means "leave Sunshine's capture target alone".
 SUNSHINE_OUTPUT=""
+# Autostart is the point of the project, but re-running --apply should not
+# silently undo a deliberate "systemctl --user disable".
+SUNSHINE_ENABLE=true
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 usage() {
@@ -36,6 +39,9 @@ Options:
                          keeps capturing the built-in panel, not the virtual
                          output. List candidates after the first run with:
                          journalctl --user -u <unit> | grep 'Found monitor'
+  --no-enable            Start Sunshine without enabling autostart. By default
+                         the service is enabled for the graphical session, so a
+                         later --apply would otherwise re-enable it for you.
   --profile    <name>    EDID mode profile            (default: tabs9_60hz)
                          see: python3 edid/generate.py --help
   -h, --help             Show this help
@@ -52,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --connector)   validate_connector_name "${2:-}";            EDID_CONNECTOR="$2";      shift ;;
     --sunshine-pkg) validate_pkg_name "${2:-}";                 SUNSHINE_PKG="$2";        shift ;;
     --sunshine-output) validate_output_name "${2:-}";           SUNSHINE_OUTPUT="$2";     shift ;;
+    --no-enable)   SUNSHINE_ENABLE=false ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
