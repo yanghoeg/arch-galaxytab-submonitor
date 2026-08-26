@@ -146,6 +146,69 @@ text gets blurrier, not larger.
 
 ---
 
+## Windows stop maximising properly on the real monitor
+
+Every window that "maximises" fills only part of the screen — the top-left
+corner, always the same size — on a monitor that has nothing to do with the
+tablet. Titlebar button, double-click and `Meta+PgUp` all behave identically,
+and the KWin log is clean.
+
+**Cause.** The windows *are* maximised. They are maximised into the virtual
+output, which is sitting on top of the real one.
+
+`video=<connector>:e` forces the connector on for the whole uptime — that is the
+point of it, a tablet cannot assert hotplug — so KWin sees a connected 2960×1848
+screen whether or not a tablet is anywhere near it, and puts it at 0,0, where a
+real monitor already is. KWin assigns each window to exactly one output and
+maximises it into *that* output's rectangle, so a window on the virtual output
+stops at the virtual output's edges.
+
+Measured here, with the virtual output at scale 2 and a 5120×2880 panel at
+scale 2.5:
+
+| | Logical rectangle |
+|---|---|
+| Real output `DP-1` | `0,0 2048x1152`, maximise area `2048x1108` |
+| Virtual output `HDMI-A-1` | `0,0 1480x924` |
+| A "maximised" Firefox window | `0,0 1480x924` |
+
+Nothing is logged, because nothing failed.
+
+**Check.**
+
+```bash
+./scripts/virtual-output.sh status
+```
+
+A non-zero exit with `OVERLAPS` in the line is this failure. The raw view is
+`kscreen-doctor -o`: two enabled outputs whose `Geometry:` rectangles intersect.
+
+**Fix.**
+
+```bash
+./scripts/virtual-output.sh off   # not using the tablet
+./scripts/virtual-output.sh on    # using it — enabled, placed clear of the rest
+```
+
+`session.sh` and `session.sh --stop` already do this at both ends of a session.
+
+**Why it comes back by itself.** KWin stores one saved layout per set of
+connected outputs, and a forced connector makes that set identical in every
+session — so whatever state the last session ended in is what the next one
+restores. Shut down from the tablet, or crash, with the virtual output enabled
+and it comes back enabled and overlapping. The `tabdisp-virtual-output.service`
+user unit that the installer enables exists for exactly that case: it parks the
+output once per login, so no session can leak its layout into the next one.
+
+```bash
+systemctl --user status tabdisp-virtual-output.service
+```
+
+Inactive means either the install ran with `--no-output-reset`, or the unit's
+`ExecStart` no longer points at this checkout.
+
+---
+
 ## The wrong screen is being streamed
 
 Moonlight shows the laptop's built-in display, complete with desktop icons,

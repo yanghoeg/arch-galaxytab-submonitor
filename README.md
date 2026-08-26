@@ -90,7 +90,7 @@ lib/
   util.sh             Logging, dry-run aware executors, string helpers
   bootstrap.sh        Platform detection + adapter loading, shared by both entry points
   ports.sh            Auto-detection + port dispatcher functions
-  core.sh             Install steps (EDID → kernel → initramfs → Sunshine → udev)
+  core.sh             Install steps (EDID → kernel → initramfs → Sunshine → session unit → udev)
 adapters/
   bootloader/         systemd_boot.sh · grub.sh
   initramfs/          mkinitcpio.sh · dracut.sh
@@ -99,8 +99,11 @@ edid/
   generate.py         CVT-RB2 EDID 1.4 generator, output validated with edid-decode
   generated/          Generated .bin blobs (installer output path)
 udev/                 uinput access rules  (sunshine-uinput group)
+systemd/
+  tabdisp-virtual-output.service.in   Login-time unit that parks the virtual output
 scripts/
-  session.sh          Day-to-day: start Sunshine and report readiness
+  session.sh          Day-to-day: start Sunshine, unpark the output, report readiness
+  virtual-output.sh   Enable the virtual output clear of the real ones, or park it
   verify.sh           Read-only post-install check
   uninstall.sh        Reverses install.sh, dry-run by default
 docs/
@@ -185,6 +188,9 @@ journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monit
 
 ### 4. Match the display scale
 
+`session.sh` does this for you — it is here so you know what it is doing and can
+override it.
+
 A new output comes up at scale 1. On a 14.6" 2960×1848 panel that renders
 everything at roughly half the size it has on a laptop screen — legible in a
 screenshot, not in use.
@@ -194,7 +200,9 @@ kscreen-doctor output.HDMI-A-1.scale.2
 ```
 
 Scale 2 gives a logical 1480×924, which is close enough to a typical 1440×900
-laptop desktop that UI elements end up the same physical size on both.
+laptop desktop that UI elements end up the same physical size on both. It is
+applied only when the output comes up at 1, so a scale you pick by hand stays
+picked; `./scripts/virtual-output.sh on --scale 2.5` changes the default.
 
 This fixes text being too *small*. Text being *soft* is a separate problem, and
 one this project has not got to the bottom of — if your built-in panel somehow
@@ -292,16 +300,15 @@ decode AV1 but cannot encode it, and Sunshine will fall back to software.
 
 ### Day to day
 
-Once installed, the virtual output is simply there — it comes up from the kernel
-command line at boot and needs nothing from this repo. All that is left is
-having Sunshine running before you reach for the tablet:
+Two things have to be true before you reach for the tablet: Sunshine running,
+and the virtual output enabled. That is what `session.sh` is for.
 
 ```bash
 ./scripts/session.sh
 ```
 
 ```
-  virtual output   2960x1848, scale 2
+  virtual output   2960x1848, scale 2 at 4096,0
   sunshine         started (was inactive)
   capture target   output_name = 1  -> ...HDMI-A-1-Virtual Sub
   encoder          hevc_vaapi [vaapi]
@@ -312,12 +319,58 @@ having Sunshine running before you reach for the tablet:
 ══ Ready — open Moonlight on the tablet ══
 ```
 
-It starts the service if it is not running and then checks the things that
-actually stop a connection: an output stuck at scale 1, a capture target
-pointing at the wrong screen, a software encoder fallback, a firewall with no
-rule for Sunshine, tethering that is not up, and whether mDNS is advertising.
-Non-zero exit if any of those are wrong. `--no-start` reports without touching
-anything, and `--stop` shuts Sunshine down again.
+It enables the virtual output, places it clear of your real screens, gives it a
+usable scale, starts Sunshine if it is not running, and then checks the things
+that actually stop a connection: a capture target pointing at the wrong screen,
+a software encoder fallback, a firewall with no rule for Sunshine, tethering
+that is not up, and whether mDNS is advertising. Non-zero exit if any of those
+are wrong. `--no-start` reports without touching anything, and `--stop` shuts
+Sunshine down and parks the output again.
+
+#### Why the output gets parked
+
+An idle virtual output is not free, which is the thing this project had wrong
+for a while. `drm.edid_firmware` and `video=<connector>:e` force the connector
+on for the whole uptime — a tablet has no way to assert hotplug, so there is no
+alternative — and KWin therefore sees a permanently connected 2960×1848 screen
+with nothing behind it. Left enabled, it lands at 0,0: on top of whatever real
+monitor is already there.
+
+Two outputs sharing a rectangle is not a drawing problem. KWin assigns each
+window to exactly one output and maximises it into *that* output's rectangle, so
+windows that land on the virtual one fill only its area. Measured on a 5120×2880
+panel at scale 2.5, "maximised" windows came out 1480×924 inside a 2048×1152
+desktop — and maximise looked broken across the whole desktop, with nothing in
+the KWin log to say why. See [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
+So the output is enabled only for as long as a session lasts, and always placed
+past the right edge of the real screens. `scripts/virtual-output.sh` is that
+logic on its own, if you want to drive it by hand:
+
+```bash
+./scripts/virtual-output.sh on       # enable it, clear of everything else
+./scripts/virtual-output.sh status   # exit 1 if it overlaps a real screen
+./scripts/virtual-output.sh off      # park it
+```
+
+#### Getting it back after a reboot
+
+`--stop` covers the tidy case. It does not cover shutting the machine down from
+the tablet, a crash, or simply forgetting: KWin restores the output layout it
+saved last, so the virtual screen comes back enabled and overlapping, and the
+first thing you notice is that windows will not maximise.
+
+So the installer also enables a user unit, `tabdisp-virtual-output.service`,
+which parks the output once at every login. However a session ends, the next one
+starts with real screens only.
+
+```bash
+systemctl --user status tabdisp-virtual-output.service
+```
+
+Its `ExecStart` points into this checkout — move or delete the repo and the unit
+breaks; re-run `install.sh --apply` from the new location. Install with
+`--no-output-reset` to put the unit in place without enabling it.
 
 If you would rather Sunshine were not resident — no tray icon sitting there when
 you are not using the tablet — turn autostart off once and drive it from the
@@ -334,9 +387,6 @@ demand. Install with `--no-enable` to skip the enable step in the first place,
 and keep using it on later `--apply` runs so the installer does not quietly turn
 autostart back on.
 
-Nothing else needs stopping. The virtual output is a boot-time thing and costs
-nothing while idle — only Sunshine is worth turning off.
-
 Do not use `install.sh` for this. It edits the bootloader entry and can rebuild
 the initramfs; it is an installer, not a launcher.
 
@@ -348,8 +398,8 @@ the initramfs; it is an installer, not a launcher.
 ./scripts/uninstall.sh --apply --purge    # and remove the Sunshine package
 ```
 
-Reverses the kernel parameters, initramfs entry, EDID blob, capabilities, group
-and udev rule. Your Sunshine configuration and pairing keys are left alone.
+Reverses the kernel parameters, initramfs entry, EDID blob, capabilities, group,
+udev rule and the login-time unit. Your Sunshine configuration and pairing keys are left alone.
 
 ---
 

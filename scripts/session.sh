@@ -4,8 +4,10 @@
 #
 # This is deliberately NOT install.sh. The installer rewrites the bootloader
 # entry and can rebuild the initramfs; it has no business running every time you
-# want to use the second screen. The virtual output itself needs nothing here --
-# it comes up from the kernel command line at boot.
+# want to use the second screen. What this does touch is the virtual output: the
+# kernel keeps that connector forced on for the whole uptime, so it is unparked
+# for the length of a session and parked again on --stop. See
+# scripts/virtual-output.sh for why leaving it enabled breaks window maximising.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,34 +53,42 @@ bad()  { printf "  %-16s %s\n" "$1" "$2"; N_BAD=$((N_BAD + 1)); }
 log_header "arch-galaxytab-submonitor session"
 echo
 
-# Stopping is the other half of "I do not always need this running". Nothing
-# else here has to be undone -- the virtual output is a boot-time thing.
+# Stopping is the other half of "I do not always need this running", and the
+# virtual output is the part that actually costs something while idle: left
+# enabled it sits on top of a real monitor and every window that lands on it
+# stops maximising properly.
 if [[ "$STOP" == "true" ]]; then
-  before=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
+  was=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
   systemctl --user stop "$SUNSHINE_UNIT" 2>/dev/null
-  row "sunshine" "$([[ "$before" == "active" ]] && echo "stopped" || echo "was already $before")"
-  row "virtual output" "left in place — it comes up at boot, not from here"
+  row "sunshine" "$([[ "$was" == "active" ]] && echo "stopped" || echo "was already $was")"
+  if out=$("$SCRIPT_DIR/scripts/virtual-output.sh" off --connector "$EDID_CONNECTOR" 2>&1); then
+    row "virtual output" "$out"
+  else
+    bad "virtual output" "$out"
+  fi
   echo
-  log_header "Stopped"
+  if [[ $N_BAD -eq 0 ]]; then
+    log_header "Stopped"
+  else
+    log_header "$N_BAD problem(s) above"
+    exit 1
+  fi
   exit 0
 fi
 
 # ── The virtual output ────────────────────────────────────────────────────────
-CONNECTOR_DIR=$(echo /sys/class/drm/card*-"${EDID_CONNECTOR}" | cut -d' ' -f1)
-if [[ ! -d "$CONNECTOR_DIR" ]]; then
-  bad "virtual output" "connector ${EDID_CONNECTOR} not found"
-elif [[ "$(cat "$CONNECTOR_DIR/status" 2>/dev/null)" != "connected" ]]; then
-  bad "virtual output" "not connected — run ./scripts/verify.sh"
+# Enable it, place it past the right edge of the real screens, and give it a
+# usable scale. All of that lives in virtual-output.sh, which the session-start
+# unit also calls to park it again after a reboot.
+#
+# This block runs before Sunshine deliberately: Sunshine's output_name is an
+# index into the monitor list it enumerates, and a parked output is not in it.
+# --no-start means "report, change nothing", so it only asks.
+VO_ACTION=$([[ "$NO_START" == "true" ]] && echo status || echo on)
+if out=$("$SCRIPT_DIR/scripts/virtual-output.sh" "$VO_ACTION" --connector "$EDID_CONNECTOR" 2>&1); then
+  row "virtual output" "$out"
 else
-  mode=$(head -1 "$CONNECTOR_DIR/modes" 2>/dev/null)
-  scale=$(kscreen-doctor -o 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
-          | awk -v c="$EDID_CONNECTOR" '$0 ~ c {f=1} f && /Scale:/ {print $2; exit}')
-  if [[ "$scale" == "1" ]]; then
-    # Not fatal, but at scale 1 the desktop is unusably small on a tablet.
-    bad "virtual output" "${mode:-?} at scale 1 — text will be half size, try: kscreen-doctor output.${EDID_CONNECTOR}.scale.2"
-  else
-    row "virtual output" "${mode:-?}${scale:+, scale $scale}"
-  fi
+  bad "virtual output" "$out"
 fi
 
 # ── Sunshine ──────────────────────────────────────────────────────────────────

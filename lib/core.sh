@@ -121,6 +121,43 @@ _core_sunshine_output() {
   run_cmd systemctl --user restart "$SUNSHINE_UNIT"
 }
 
+_core_output_reset() {
+  log_step "Session: park the virtual output at login"
+
+  # Why this exists: the connector is forced on for the whole uptime, so KWin
+  # sees the same set of screens whether or not a tablet is connected, and
+  # restores whatever layout it saved last. End a session with the virtual
+  # output still enabled -- reboot, crash, shutdown from the tablet -- and it
+  # comes back at 0,0 on top of a real monitor. session.sh --stop handles the
+  # tidy case; this handles the rest.
+  local src="${SCRIPT_DIR}/systemd/${OUTPUT_RESET_UNIT}.in"
+  local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  local script="${SCRIPT_DIR}/scripts/virtual-output.sh"
+
+  [[ -f "$src" ]] || die "Unit template not found: $src"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "[dry-run] install ${unit_dir}/${OUTPUT_RESET_UNIT}"
+    log "[dry-run]   ExecStart=${script} off --connector ${EDID_CONNECTOR}"
+  else
+    mkdir -p "$unit_dir"
+    # The unit points back into this checkout. Moving or deleting the repo
+    # breaks it -- systemctl --user status will say exactly that.
+    sed -e "s|@SCRIPT@|${script}|g" -e "s|@CONNECTOR@|${EDID_CONNECTOR}|g" \
+      "$src" > "${unit_dir}/${OUTPUT_RESET_UNIT}"
+    systemctl --user daemon-reload
+    log "Installed: ${unit_dir}/${OUTPUT_RESET_UNIT}"
+  fi
+
+  if [[ "${OUTPUT_RESET_ENABLE:-true}" == "true" ]]; then
+    # enable, not enable --now: running it here would park an output you may be
+    # using right now. It takes effect at the next login.
+    run_cmd systemctl --user enable "$OUTPUT_RESET_UNIT"
+  else
+    log "--no-output-reset: unit installed but left disabled."
+  fi
+}
+
 _core_udev() {
   log_step "udev: uinput access rules"
   run_sudo install -Dm644 \
@@ -139,6 +176,7 @@ run_install() {
   _core_initramfs
   _core_sunshine
   _core_sunshine_output
+  _core_output_reset
   _core_udev
 
   echo ""

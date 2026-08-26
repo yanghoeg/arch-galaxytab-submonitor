@@ -199,6 +199,34 @@ else
   bad "sunshine binary not found"
 fi
 
+log_step "Screen layout"
+OUTPUT_RESET_UNIT="tabdisp-virtual-output.service"
+OUTPUT_RESET_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${OUTPUT_RESET_UNIT}"
+if [[ -f "$OUTPUT_RESET_PATH" ]]; then
+  ok "login-time reset installed: $OUTPUT_RESET_UNIT"
+  exec_line=$(sed -n 's/^ExecStart=//p' "$OUTPUT_RESET_PATH" | head -1)
+  exec_bin=${exec_line%% *}
+  if [[ ! -x "$exec_bin" ]]; then
+    # The unit points into the checkout, so moving the repo silently breaks it.
+    bad "its ExecStart is gone: $exec_bin  (re-run install.sh --apply from the new path)"
+  elif systemctl --user is-enabled --quiet "$OUTPUT_RESET_UNIT" 2>/dev/null; then
+    ok "enabled — the virtual output is parked at every login"
+  else
+    soft "installed but not enabled, so an untidy shutdown leaves the virtual"
+    echo  "         output overlapping a real screen at the next login"
+  fi
+else
+  soft "no login-time reset unit — install with install.sh --apply, or accept"
+  echo  "         that a session ending badly leaves the outputs overlapping"
+fi
+
+# The failure this guards against, checked directly rather than inferred.
+if layout=$("$SCRIPT_DIR/scripts/virtual-output.sh" status --connector "$EDID_CONNECTOR" 2>&1); then
+  ok "virtual output: $layout"
+else
+  bad "virtual output: $layout"
+fi
+
 log_step "Input return path"
 if getent group sunshine-uinput >/dev/null; then
   ok "group exists: sunshine-uinput"

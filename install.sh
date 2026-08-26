@@ -20,6 +20,10 @@ SUNSHINE_OUTPUT=""
 # Autostart is the point of the project, but re-running --apply should not
 # silently undo a deliberate "systemctl --user disable".
 SUNSHINE_ENABLE=true
+# A user unit that parks the virtual output at every login, so a session that
+# ended with it still enabled cannot leave it overlapping a real screen.
+OUTPUT_RESET_UNIT="tabdisp-virtual-output.service"
+OUTPUT_RESET_ENABLE=true
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 usage() {
@@ -42,6 +46,10 @@ Options:
   --no-enable            Start Sunshine without enabling autostart. By default
                          the service is enabled for the graphical session, so a
                          later --apply would otherwise re-enable it for you.
+  --no-output-reset      Install the login-time "park the virtual output" unit
+                         but leave it disabled. By default it is enabled, which
+                         is what stops the virtual screen from coming back on
+                         top of a real monitor after an untidy shutdown.
   --profile    <name>    EDID mode profile            (default: tabs9_60hz)
                          see: python3 edid/generate.py --help
   -h, --help             Show this help
@@ -59,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --sunshine-pkg) validate_pkg_name "${2:-}";                 SUNSHINE_PKG="$2";        shift ;;
     --sunshine-output) validate_output_name "${2:-}";           SUNSHINE_OUTPUT="$2";     shift ;;
     --no-enable)   SUNSHINE_ENABLE=false ;;
+    --no-output-reset) OUTPUT_RESET_ENABLE=false ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac

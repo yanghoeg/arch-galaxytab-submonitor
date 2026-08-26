@@ -1,0 +1,23 @@
+# Installed to ~/.config/systemd/user/ by install.sh, with @SCRIPT@ and
+# @CONNECTOR@ substituted.
+#
+# The kernel forces this connector on for the whole uptime, and KWin restores
+# whatever output layout it saved last. Shut down while a tablet session is
+# still up and the virtual screen comes back at 0,0 -- on top of a real monitor,
+# where it quietly breaks window maximising. This undoes that once per login, so
+# a session that ended badly cannot leak into the next boot.
+
+[Unit]
+Description=Park the arch-galaxytab-submonitor virtual output
+After=plasma-kwin_wayland.service plasma-kwin_x11.service
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+# The script waits for KWin to answer and then re-checks that the output stayed
+# disabled, so it needs room to retry -- but not forever.
+ExecStart=@SCRIPT@ off --connector @CONNECTOR@
+TimeoutStartSec=120
+
+[Install]
+WantedBy=graphical-session.target

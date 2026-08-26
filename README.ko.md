@@ -90,7 +90,7 @@ lib/
   util.sh             로깅 + dry-run 실행기 + 문자열 헬퍼
   bootstrap.sh        플랫폼 감지 + 어댑터 로딩. 두 진입점이 공유
   ports.sh            자동 감지 + 포트 디스패처 함수
-  core.sh             설치 단계 (EDID → 커널 → initramfs → Sunshine → udev)
+  core.sh             설치 단계 (EDID → 커널 → initramfs → Sunshine → 세션 유닛 → udev)
 adapters/
   bootloader/         systemd_boot.sh · grub.sh
   initramfs/          mkinitcpio.sh · dracut.sh
@@ -99,8 +99,11 @@ edid/
   generate.py         CVT-RB2 EDID 1.4 생성기. 출력은 edid-decode 로 검증
   generated/          생성된 .bin blob (설치기 출력 경로)
 udev/                 uinput 접근 규칙 (sunshine-uinput 그룹)
+systemd/
+  tabdisp-virtual-output.service.in   로그인 시 가상 출력을 파킹하는 유닛
 scripts/
-  session.sh          일상 사용: Sunshine 기동 + 준비상태 보고
+  session.sh          일상 사용: Sunshine 기동 + 가상 출력 활성화 + 준비상태 보고
+  virtual-output.sh   가상 출력을 실화면과 겹치지 않게 켜거나 파킹
   verify.sh           설치 후 읽기 전용 점검
   uninstall.sh        install.sh 역순 복원. 기본 dry-run
 docs/
@@ -165,13 +168,15 @@ journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monit
 
 ### 4. 배율 맞추기
 
+`session.sh` 가 알아서 해준다 — 무엇을 하고 있는지 알고 필요하면 뒤집으라고 적어둔다.
+
 새 출력은 scale 1로 올라온다. 14.6" 2960×1848 패널에서는 모든 것이 노트북 화면 대비 절반 크기로 그려진다 — 스크린샷으로는 읽히지만 실사용은 불가능하다.
 
 ```bash
 kscreen-doctor output.HDMI-A-1.scale.2
 ```
 
-scale 2면 논리 해상도가 1480×924가 되어, 흔한 1440×900 노트북 데스크톱과 충분히 가까워 UI 요소가 양쪽에서 같은 물리 크기로 보인다.
+scale 2면 논리 해상도가 1480×924가 되어, 흔한 1440×900 노트북 데스크톱과 충분히 가까워 UI 요소가 양쪽에서 같은 물리 크기로 보인다. 출력이 scale 1로 올라올 때만 적용하므로 손으로 고른 배율은 그대로 남는다. 기본값을 바꾸려면 `./scripts/virtual-output.sh on --scale 2.5`.
 
 이건 글자가 *작은* 문제를 고치는 것이다. 글자가 *흐린* 것은 별개이고 아직 규명하지 못한 문제다 — 내장 패널이 탭에 뜬 압축 스트림보다 오히려 나빠 보인다면 지금까지 무엇이 배제됐는지 [`docs/troubleshooting.md`](docs/troubleshooting.md) 를 참조.
 
@@ -242,14 +247,14 @@ Moonlight 설정에서 **HEVC** 를 고르고 비트레이트를 올린다. 기�
 
 ### 일상 사용
 
-설치가 끝나면 가상 출력은 그냥 거기 있다 — 부팅 시 커널 커맨드라인으로 올라오며 이 저장소가 관여할 일이 없다. 남는 것은 탭을 집기 전에 Sunshine이 떠 있게 하는 것뿐이다.
+탭을 집기 전에 참이어야 하는 건 두 가지다. Sunshine이 떠 있을 것, 그리고 가상 출력이 켜져 있을 것. `session.sh` 가 그 둘을 맡는다.
 
 ```bash
 ./scripts/session.sh
 ```
 
 ```
-  virtual output   2960x1848, scale 2
+  virtual output   2960x1848, scale 2 at 4096,0
   sunshine         started (was inactive)
   capture target   output_name = 1  -> ...HDMI-A-1-Virtual Sub
   encoder          hevc_vaapi [vaapi]
@@ -260,7 +265,33 @@ Moonlight 설정에서 **HEVC** 를 고르고 비트레이트를 올린다. 기�
 ══ Ready — open Moonlight on the tablet ══
 ```
 
-서비스가 안 떠 있으면 띄우고, 실제로 연결을 막는 것들을 점검한다 — scale 1에 묶인 출력, 엉뚱한 화면을 가리키는 캡처 대상, 소프트웨어 인코더 폴백, Sunshine 규칙이 없는 방화벽, 올라오지 않은 테더링, mDNS 광고 여부. 하나라도 어긋나면 exit 1. `--no-start` 는 아무것도 건드리지 않고 보고만 하며, `--stop` 은 Sunshine을 내린다.
+가상 출력을 켜서 실화면 오른쪽 밖에 놓고 쓸 만한 배율을 주고, Sunshine이 안 떠 있으면 띄우고, 실제로 연결을 막는 것들을 점검한다 — 엉뚱한 화면을 가리키는 캡처 대상, 소프트웨어 인코더 폴백, Sunshine 규칙이 없는 방화벽, 올라오지 않은 테더링, mDNS 광고 여부. 하나라도 어긋나면 exit 1. `--no-start` 는 아무것도 건드리지 않고 보고만 하며, `--stop` 은 Sunshine을 내리고 가상 출력을 다시 파킹한다.
+
+#### 왜 파킹하는가
+
+놀고 있는 가상 출력은 공짜가 아니다. 이 프로젝트가 한동안 틀렸던 지점이다. `drm.edid_firmware` 와 `video=<connector>:e` 는 커넥터를 부팅부터 종료까지 강제로 켜둔다 — 태블릿은 핫플러그를 주장할 방법이 없으니 대안이 없다 — 그래서 KWin 은 뒤에 아무것도 없는 2960×1848 화면이 영구히 연결돼 있다고 본다. 그대로 켜두면 0,0 에 놓인다. 이미 거기 있는 실제 모니터 위에.
+
+두 출력이 같은 사각형을 공유하는 건 그리기 문제가 아니다. KWin 은 창을 정확히 하나의 출력에 배정하고 *그* 출력의 사각형에 맞춰 최대화한다. 그래서 가상 출력에 배정된 창은 그 영역만 채운다. 5120×2880 패널 scale 2.5 에서 실측: "최대화된" 창이 2048×1152 데스크톱 안에서 1480×924 로 나왔다. 데스크톱 전체에서 최대화가 고장난 것처럼 보이는데 KWin 로그에는 아무 단서도 없다. [`docs/troubleshooting.md`](docs/troubleshooting.md) 참조.
+
+그래서 가상 출력은 세션 동안만 켜고, 항상 실화면 오른쪽 끝 너머에 놓는다. 그 로직만 떼어낸 게 `scripts/virtual-output.sh` 이고 손으로도 굴릴 수 있다.
+
+```bash
+./scripts/virtual-output.sh on       # 실화면과 안 겹치게 켠다
+./scripts/virtual-output.sh status   # 실화면과 겹치면 exit 1
+./scripts/virtual-output.sh off      # 파킹
+```
+
+#### 재부팅해도 돌아오게 하기
+
+`--stop` 은 얌전히 끝낸 경우만 커버한다. 탭에서 시스템을 종료했거나, 크래시났거나, 그냥 깜빡한 경우는 커버하지 못한다. KWin 은 마지막으로 저장한 출력 배치를 복원하므로 가상 화면이 켜진 채 겹쳐서 돌아오고, 제일 먼저 눈치채는 증상은 창이 최대화되지 않는 것이다.
+
+그래서 설치기는 사용자 유닛 `tabdisp-virtual-output.service` 도 함께 enable 한다. 이 유닛이 매 로그인마다 한 번 가상 출력을 파킹한다. 세션이 어떻게 끝났든 다음 세션은 실화면만으로 시작한다.
+
+```bash
+systemctl --user status tabdisp-virtual-output.service
+```
+
+유닛의 `ExecStart` 는 이 체크아웃을 가리킨다 — 저장소를 옮기거나 지우면 유닛이 깨지므로 옮긴 위치에서 `install.sh --apply` 를 다시 돌린다. 유닛만 깔고 enable 하지 않으려면 `--no-output-reset`.
 
 Sunshine이 상주하는 게 싫다면 — 탭을 안 쓸 때 트레이 아이콘이 떠 있는 게 거슬린다면 — 자동시작을 한 번 끄고 스크립트로 굴리면 된다.
 
@@ -272,8 +303,6 @@ systemctl --user disable app-dev.lizardbyte.app.Sunshine.service
 
 `disable` 은 자동시작 심링크만 지우며 필요할 때 수동 기동은 그대로 된다. 애초에 enable 단계를 건너뛰려면 `--no-enable` 로 설치하고, 이후 `--apply` 를 돌릴 때도 계속 붙여야 설치기가 자동시작을 조용히 되살리지 않는다.
 
-나머지는 내릴 것이 없다. 가상 출력은 부팅 시점의 산물이고 놀고 있어도 비용이 없다 — 끌 가치가 있는 건 Sunshine뿐이다.
-
 이 용도로 `install.sh` 를 쓰지 말 것. 부트 엔트리를 편집하고 initramfs를 재빌드할 수 있는 설치기이지 런처가 아니다.
 
 ### 제거
@@ -284,7 +313,7 @@ systemctl --user disable app-dev.lizardbyte.app.Sunshine.service
 ./scripts/uninstall.sh --apply --purge    # Sunshine 패키지까지 제거
 ```
 
-커널 파라미터·initramfs 항목·EDID 블롭·capability·그룹·udev 규칙을 되돌린다. Sunshine 설정과 페어링 키는 건드리지 않는다.
+커널 파라미터·initramfs 항목·EDID 블롭·capability·그룹·udev 규칙·로그인 유닛을 되돌린다. Sunshine 설정과 페어링 키는 건드리지 않는다.
 
 ---
 

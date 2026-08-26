@@ -17,6 +17,7 @@ EDID_PROFILE="tabs9_60hz"
 # prebuilt binary) install the same unit under a reverse-DNS name.
 SUNSHINE_PKG="sunshine-bin"
 SUNSHINE_UNIT="app-dev.lizardbyte.app.Sunshine.service"
+OUTPUT_RESET_UNIT="tabdisp-virtual-output.service"
 
 usage() {
   cat <<USAGE
@@ -66,6 +67,19 @@ log_kv "Pkg manager"   "$PKG_MANAGER"
 log_kv "DRM connector" "$EDID_CONNECTOR"
 log_kv "EDID profile"  "$EDID_PROFILE"
 echo
+
+log_step "Session: remove the login-time output reset"
+OUTPUT_RESET_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${OUTPUT_RESET_UNIT}"
+# Unpark first. Otherwise the last thing this uninstaller does is leave the
+# virtual output disabled with nothing left to re-enable it -- until the reboot
+# below drops the connector entirely, which is confusing to walk into.
+if [[ "$DRY_RUN" == "true" ]] || [[ -f "$OUTPUT_RESET_PATH" ]]; then
+  run_cmd systemctl --user disable "$OUTPUT_RESET_UNIT"
+  run_cmd rm -f "$OUTPUT_RESET_PATH"
+  run_cmd systemctl --user daemon-reload
+else
+  log "Not installed — skipping."
+fi
 
 log_step "udev: remove uinput rules"
 run_sudo rm -f /etc/udev/rules.d/60-tabdisp-uinput.rules
