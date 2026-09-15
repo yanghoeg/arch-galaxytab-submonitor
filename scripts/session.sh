@@ -91,9 +91,29 @@ else
   bad "virtual output" "$out"
 fi
 
+# ── Discovery ─────────────────────────────────────────────────────────────────
+# This screen is used a few days a month. Every time it comes back the tablet's
+# DHCP has handed the host a different address, so the entry Moonlight saved is
+# dead — and the only thing that repairs it without typing is mDNS. If mDNS was
+# handed to Avahi (the resolved drop-in is the signature of that setup), a dead
+# avahi-daemon is a broken setup, not an opt-out. Bring it up, and do it before
+# Sunshine: Sunshine registers with Avahi only at its own startup.
+MDNS_HANDOFF=/etc/systemd/resolved.conf.d/10-no-mdns.conf
+AVAHI_STARTED=false
+if [[ -f "$MDNS_HANDOFF" ]] && ! systemctl is-active --quiet avahi-daemon 2>/dev/null \
+   && [[ "$NO_START" == "false" ]]; then
+  if sudo -n systemctl start avahi-daemon 2>/dev/null; then
+    AVAHI_STARTED=true
+  fi
+fi
+
 # ── Sunshine ──────────────────────────────────────────────────────────────────
 was=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
-if [[ "$was" != "active" ]] && [[ "$NO_START" == "false" ]]; then
+if [[ "$AVAHI_STARTED" == "true" ]] && [[ "$was" == "active" ]]; then
+  # It was running while Avahi was down, so it never registered. Restart it.
+  systemctl --user restart "$SUNSHINE_UNIT" 2>/dev/null
+  was="restarted to register with Avahi"
+elif [[ "$was" != "active" ]] && [[ "$NO_START" == "false" ]]; then
   systemctl --user start "$SUNSHINE_UNIT" 2>/dev/null
   for _ in $(seq 1 400); do
     [[ "$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)" == "active" ]] && break
@@ -101,7 +121,11 @@ if [[ "$was" != "active" ]] && [[ "$NO_START" == "false" ]]; then
 fi
 now=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
 if [[ "$now" == "active" ]]; then
-  row "sunshine" "$([[ "$was" == "active" ]] && echo "already running" || echo "started (was $was)")"
+  case "$was" in
+    active)     row "sunshine" "already running" ;;
+    restarted*) row "sunshine" "$was" ;;
+    *)          row "sunshine" "started (was $was)" ;;
+  esac
 else
   bad "sunshine" "$now — journalctl --user -u $SUNSHINE_UNIT"
 fi
@@ -144,19 +168,33 @@ fi
 
 link=$(ip -br addr 2>/dev/null | awk '/^enp[0-9a-z]*u[0-9]/ && $2!="DOWN" {print $1" "$3; exit}')
 if [[ -n "$link" ]]; then
-  row "tethering" "$link"
+  row "tethering" "$link   <- changes every re-tether; mDNS makes it not matter"
 else
   bad "tethering" "no USB tethering interface is up — enable it on the tablet"
 fi
 
+host_addr=${link##* }; host_addr=${host_addr%%/*}
 if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
-  if timeout 5 avahi-browse -atp 2>/dev/null | grep -q _nvstream._tcp; then
-    row "discovery" "advertised over mDNS"
+  # Sunshine needs a moment after (re)start before the record shows up.
+  adv=""
+  for _ in 1 2 3 4 5 6; do
+    adv=$(timeout 3 avahi-browse -atp 2>/dev/null | grep -c _nvstream._tcp)
+    [[ "${adv:-0}" -gt 0 ]] && break
+  done
+  if [[ "${adv:-0}" -gt 0 ]]; then
+    row "discovery" "advertised over mDNS$([[ "$AVAHI_STARTED" == "true" ]] && echo " (avahi was down — started it)")"
   else
-    row "discovery" "avahi running but Sunshine is not advertising yet"
+    bad "discovery" "avahi running but Sunshine is not advertising — restart it, or add ${host_addr:-the host} by address"
   fi
+elif [[ -f "$MDNS_HANDOFF" ]]; then
+  if [[ "$NO_START" == "true" ]]; then
+    bad "discovery" "avahi-daemon is down (not started: --no-start)"
+  else
+    bad "discovery" "avahi-daemon is down and could not be started"
+  fi
+  echo "                   -> sudo systemctl enable --now avahi-daemon, or add ${host_addr:-the host} in Moonlight by hand"
 else
-  row "discovery" "avahi-daemon inactive — add the host by address in Moonlight"
+  row "discovery" "no mDNS — add ${host_addr:-the host} in Moonlight by hand"
 fi
 
 echo

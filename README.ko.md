@@ -60,6 +60,13 @@ spacedesk가 하는 일을 웹 기반 도구 없이 리눅스에서 한다.
 켜서 실제 화면 오른쪽에 두고 배율을 맞추고 Sunshine이 안 떠 있으면 띄운 다음
 나머지를 점검한다. 하나라도 어긋나면 exit 1.
 
+테더링 주소는 탭을 다시 꽂을 때마다 바뀐다. 한 달에 며칠 쓰는 화면이면 다음
+세션엔 Moonlight이 저장해 둔 항목이 죽어 있는 게 보통이다. mDNS(아래)를
+해두면 그게 상관없어지고 `session.sh` 가 그 상태를 지킨다. Avahi가 죽어
+있으면 띄우고 그 뒤에 Sunshine을 재시작해 레코드가 나가게 한 다음, 호스트가
+실제로 광고되고 있을 때만 Ready를 찍는다. 탐색이 안 되면 그렇다고 말하고
+Moonlight에 넣을 주소를 대신 찍는다.
+
 ```bash
 ./scripts/session.sh --stop       # Sunshine 내리고 가상 출력 파킹
 ./scripts/session.sh --no-start   # 아무것도 안 건드리고 보고만
@@ -123,6 +130,18 @@ journalctl --user -u app-dev.lizardbyte.app.Sunshine.service | grep 'Found monit
 넘긴 뒤 사용자명과 비밀번호를 정한다. 이 계정과 페어링 키는
 `~/.config/sunshine/` 에 들어가며 `.gitignore` 가 막고 `uninstall.sh` 도
 건드리지 않는다.
+
+2주 뒤에 잊어버렸으면 덮어쓴다. 옛 비밀번호는 필요 없다. 그리고 서비스를
+재시작한다 — 아직 옛 로그인을 메모리에 들고 있어서 재시작 전엔 새 것이 안
+먹는다.
+
+```bash
+sunshine --creds <사용자명> <비밀번호>
+systemctl --user restart app-dev.lizardbyte.app.Sunshine.service
+```
+
+탭과의 페어링은 그대로다. 키가 별도라서. 비밀번호가 셸 히스토리에 남으니
+셸이 앞 공백을 무시해준다면 공백을 하나 붙이거나 `read -s` 로 받아 넘긴다.
 
 #### 5. 탭 연결하고 방화벽 열기
 
@@ -191,7 +210,8 @@ iifname $TAB_IF udp dport 5353 accept          # input 체인
 ... 5353 ...                                   # 아웃바운드 UDP 포트 집합
 ```
 
-Sunshine을 재시작하고 광고되는지 본다.
+Sunshine을 재시작하고 광고되는지 본다. 이후로는 `session.sh` 가 매번 이걸
+확인하고 뭔가가 Avahi를 꺼놨으면 되살린다.
 
 ```bash
 systemctl --user restart app-dev.lizardbyte.app.Sunshine.service

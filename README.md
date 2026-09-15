@@ -61,6 +61,14 @@ The script enables the virtual output and places it to the right of your real
 screens, sets its scale, starts Sunshine if needed, then checks the rest. It
 exits non-zero if any line is wrong.
 
+The tethering address changes every time you plug the tablet back in, so on a
+screen you use a few days a month the entry Moonlight saved is usually dead by
+the next session. If you set up mDNS (below) that stops mattering — and
+`session.sh` keeps it that way: if Avahi has gone down it starts it, restarts
+Sunshine behind it so the record is published, and only says Ready once the
+host is actually being advertised. If discovery cannot work it says so and
+prints the address to type into Moonlight instead.
+
 ```bash
 ./scripts/session.sh --stop       # stop Sunshine, park the virtual output
 ./scripts/session.sh --no-start   # just report, change nothing
@@ -127,6 +135,18 @@ First run only. Open <https://localhost:47990>, accept the self-signed
 certificate, set a username and password. These and your pairing keys live in
 `~/.config/sunshine/`, which `.gitignore` blocks and `uninstall.sh` never
 touches.
+
+Forgot it two weeks later? Overwrite it — you do not need the old one — and
+restart the service, which is still holding the old login in memory:
+
+```bash
+sunshine --creds <user> <password>
+systemctl --user restart app-dev.lizardbyte.app.Sunshine.service
+```
+
+Pairing with the tablet survives this; it uses separate keys. The password does
+land in your shell history, so prefix the command with a space if your shell
+honours that, or feed it from `read -s`.
 
 #### 5. Connect the tablet and open the firewall
 
@@ -195,7 +215,8 @@ iifname $TAB_IF udp dport 5353 accept          # input chain
 ... 5353 ...                                   # your outbound UDP port set
 ```
 
-Restart Sunshine and confirm it is advertising:
+Restart Sunshine and confirm it is advertising. From then on `session.sh`
+checks this every time and revives Avahi if something has stopped it:
 
 ```bash
 systemctl --user restart app-dev.lizardbyte.app.Sunshine.service
